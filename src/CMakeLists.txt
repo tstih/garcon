@@ -1,16 +1,14 @@
-add_executable(garcon
-    main.cpp
-    net_socket.cpp
-    net_listener.cpp
-    http_buffer.cpp
-    http_framing.cpp
-    http_request.cpp
-    http_response.cpp
-    static_files.cpp
-    server.cpp
+file(GLOB_RECURSE GARCON_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
 )
 
+add_executable(garcon ${GARCON_SOURCES})
+
 target_compile_features(garcon PRIVATE cxx_std_20)
+
+target_include_directories(garcon PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+)
 
 add_custom_command(
     TARGET garcon POST_BUILD

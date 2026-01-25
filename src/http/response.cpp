@@ -1,4 +1,13 @@
-#include "http_response.h"
+// Implementation of HTTP response serialization.
+//
+// This file implements serialization logic for the http::response structure,
+// producing a complete HTTP/1.1 response message suitable for transmission
+// over a TCP connection. It also provides helpers for constructing common
+// plain-text responses.
+//
+// Copyright 2025 Tomaz Stih. All rights reserved.
+// MIT License.
+#include "http/response.h"
 
 #include <sstream>
 
@@ -27,4 +36,4 @@ response response::text(int s, std::string_view r, std::string_view msg)
     return resp;
 }
 
-} /* namespace http */
+} // namespace http

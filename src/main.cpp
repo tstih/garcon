@@ -1,3 +1,12 @@
+// Program entry point for the Garçon HTTP server.
+//
+// This file defines the main entry point of the application. It parses basic
+// command-line arguments, constructs the server instance, and starts the
+// blocking server loop. Any fatal initialization errors are reported to
+// standard error.
+//
+// Copyright 2025 Tomaz Stih. All rights reserved.
+// MIT License.
 #include "server.h"
 
 #include <filesystem>

@@ -1,4 +1,12 @@
-#include "net_listener.h"
+// Implementation of the TCP listening socket abstraction.
+//
+// This file implements the net::listener class, which is responsible for
+// creating a listening socket, binding it to a TCP port, and accepting
+// incoming client connections.
+//
+// Copyright 2025 Tomaz Stih. All rights reserved.
+// MIT License.
+#include "net/listener.h"
 
 #include <cstdint>
 #include <stdexcept>
@@ -35,8 +43,10 @@ socket listener::accept()
     sockaddr_in client{};
     socklen_t len = sizeof(client);
 
-    const int cfd = ::accept(_sock.fd(), reinterpret_cast<sockaddr*>(&client), &len);
+    const int cfd = ::accept(_sock.fd(),
+                             reinterpret_cast<sockaddr*>(&client),
+                             &len);
     return socket(cfd);
 }
 
-} /* namespace net */
+} // namespace net

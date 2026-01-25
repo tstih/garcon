@@ -1,3 +1,12 @@
+// Implementation of the static file request handler.
+//
+// This file implements the app::static_files class and supporting helpers for
+// serving files from a fixed directory on disk. It includes logic for safely
+// mapping request targets to filesystem paths, determining content types, and
+// constructing appropriate HTTP responses.
+//
+// Copyright 2025 Tomaz Stih. All rights reserved.
+// MIT License.
 #include "static_files.h"
 
 #include <fstream>
@@ -12,7 +21,9 @@ namespace app {
 static std::string read_file_bytes(const fs::path& p)
 {
     std::ifstream f(p, std::ios::binary);
-    if (!f) return {};
+    if (!f)
+        return {};
+
     std::ostringstream oss;
     oss << f.rdbuf();
     return oss.str();
@@ -22,13 +33,13 @@ static std::string_view guess_content_type(const fs::path& p)
 {
     const auto ext = p.extension().string();
     if (ext == ".html" || ext == ".htm") return "text/html; charset=utf-8";
-    if (ext == ".css") return "text/css; charset=utf-8";
-    if (ext == ".js")  return "text/javascript; charset=utf-8";
-    if (ext == ".txt") return "text/plain; charset=utf-8";
-    if (ext == ".png") return "image/png";
+    if (ext == ".css")                  return "text/css; charset=utf-8";
+    if (ext == ".js")                   return "text/javascript; charset=utf-8";
+    if (ext == ".txt")                  return "text/plain; charset=utf-8";
+    if (ext == ".png")                  return "image/png";
     if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
-    if (ext == ".gif") return "image/gif";
-    if (ext == ".svg") return "image/svg+xml";
+    if (ext == ".gif")                  return "image/gif";
+    if (ext == ".svg")                  return "image/svg+xml";
     return "application/octet-stream";
 }
 
@@ -74,7 +85,10 @@ static http::response serve_file(const fs::path& full, bool include_body)
     return resp;
 }
 
-static_files::static_files(fs::path root) : _root(std::move(root)) {}
+static_files::static_files(fs::path root)
+    : _root(std::move(root))
+{
+}
 
 http::response static_files::handle(const http::request& req) const
 {
@@ -82,7 +96,9 @@ http::response static_files::handle(const http::request& req) const
     const bool is_head = (req.method == "HEAD");
 
     if (!is_get && !is_head)
-        return http::response::text(405, "Method Not Allowed", "method not allowed\n");
+        return http::response::text(405,
+                                    "Method Not Allowed",
+                                    "method not allowed\n");
 
     const auto rel = map_to_path(req.target);
     if (!rel)
@@ -91,4 +107,4 @@ http::response static_files::handle(const http::request& req) const
     return serve_file(_root / *rel, is_get);
 }
 
-} /* namespace app */
+} // namespace app

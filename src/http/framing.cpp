@@ -1,4 +1,12 @@
-#include "http_framing.h"
+// Implementation of HTTP message framing utilities.
+//
+// This file implements low-level helpers for reading an HTTP header block
+// from a byte stream by accumulating data until the "\r\n\r\n" delimiter is
+// encountered or a configured maximum size is exceeded.
+//
+// Copyright 2025 Tomaz Stih. All rights reserved.
+// MIT License.
+#include "http/framing.h"
 
 #include <string_view>
 
@@ -26,7 +34,7 @@ std::optional<std::string_view> read_header_block(net::socket& s,
             return std::nullopt;
 
         auto out = b.write_span();
-        const auto rc = s.recv_some(out);
+        const auto rc = s.recv(out);
         if (rc <= 0)
             return std::nullopt;
 
@@ -34,4 +42,4 @@ std::optional<std::string_view> read_header_block(net::socket& s,
     }
 }
 
-} /* namespace http */
+} // namespace http
