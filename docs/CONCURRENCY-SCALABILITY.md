@@ -1,6 +1,7 @@
 # Concurrency And Scalability Architecture For v0.0.4
 
-This document records the concurrency model shipped in `v0.0.4`.
+This document records the concurrency model shipped in `v0.0.4` and retained
+through the `v0.0.5` internal refactor.
 
 Garçon now keeps the `v0.0.3` transport-neutral HTTP/HTTPS pipeline, but no
 longer serves only one client at a time. The runtime uses standard C++ threads
@@ -141,6 +142,10 @@ The concurrency suite verifies:
 - progress with a stalled TLS handshake
 - bounded overload recovery with a tiny worker-and-queue configuration
 - startup logging of the configured worker count and queue capacity
+
+In `v0.0.5`, the same model remains in place, but the runtime now reports
+explicit accept failures and queue-full rejections through a small diagnostics
+seam.
 
 Together these checks show that HTTP and HTTPS both run through the same
 bounded worker-pool architecture.

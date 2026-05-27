@@ -1,14 +1,16 @@
 # Garçon Architecture
 
 Garçon is structured as a small layered server. Each layer owns one job, which
-keeps the code readable and allows new capabilities such as HTTPS and
-concurrency to be added without rewriting the whole stack.
+keeps the code readable and allows new capabilities such as HTTPS,
+concurrency, and alternate handlers to be added without rewriting the whole
+stack.
 
 ## Layers
 
 ### 1. Process and configuration
 
-`src/main.cpp` is the narrow entry point. It parses CLI options, selects HTTP
+`src/main.cpp` is the narrow entry point. In `v0.0.5` it delegates argument
+handling to `src/app/command_line.*`, which parses CLI options, selects HTTP
 or HTTPS mode, chooses the document root, applies concurrency defaults, and
 builds `app::server_config`.
 
@@ -28,11 +30,12 @@ prefer a local `www/` directory, while installed packages can fall back to
 
 ### 2. Server runtime
 
-`app::server` coordinates the runtime. In `v0.0.4` it owns:
+`app::server` coordinates the runtime. In `v0.0.5` it owns:
 
 - the TCP listener
-- the static-file handler
-- the optional TLS context
+- the abstract request handler
+- the abstract stream factory
+- the runtime-events sink
 - the work queue and worker-pool orchestration
 - the per-connection request pipeline
 
@@ -45,6 +48,9 @@ Concurrency is introduced here, not in the HTTP layer. The server:
 
 This keeps the transport and HTTP code reusable.
 
+In `v0.0.5`, `server` no longer constructs concrete transport streams or calls
+the static-file handler directly. Those choices are delegated to abstractions.
+
 ### 3. Concurrency primitives
 
 `src/app/work_queue.*` and `src/app/worker_pool.*` are the `v0.0.4` modules.
@@ -56,18 +62,40 @@ This keeps the transport and HTTP code reusable.
 This split keeps synchronization code out of `server.cpp` and keeps the worker
 policy independent from HTTP details.
 
-### 4. Networking
+### 4. Request handling
+
+`src/app/request_handler.h` defines the application seam used by the runtime.
+
+- `request_handler` is the abstract strategy interface
+- `static_files` is the current concrete implementation
+
+This is the main extension point for future routing, APIs, or auth-aware
+handlers.
+
+### 5. Stream creation
+
+`src/app/stream_factory.h` and `src/app/default_stream_factory.*` isolate
+transport selection.
+
+- `stream_factory` is the abstract factory interface
+- `default_stream_factory` chooses plain TCP or TLS based on configuration
+
+This keeps `server.cpp` transport-agnostic even though the project supports
+both HTTP and HTTPS.
+
+### 6. Networking
 
 The `net/` layer owns raw socket concerns.
 
 - `net::listener` binds and listens
+- `net::accept_result` classifies accept outcomes explicitly
 - `net::socket` owns the OS socket descriptor through RAII
 - `net::stream` is the transport-neutral byte-stream interface
 - `net::plain_stream` adapts a plain TCP connection to that interface
 
 The rest of the server talks to `net::stream`, not directly to sockets.
 
-### 5. TLS
+### 7. TLS
 
 The `tls/` layer adds HTTPS without leaking OpenSSL details into the HTTP
 code.
@@ -78,7 +106,7 @@ code.
 Because both plain and TLS connections implement the same stream interface,
 the request pipeline does not need separate HTTP and HTTPS code paths.
 
-### 6. HTTP
+### 8. HTTP
 
 The `http/` layer works on bytes and protocol semantics only.
 
@@ -89,16 +117,18 @@ The `http/` layer works on bytes and protocol semantics only.
 
 This layer does not know whether the underlying bytes came from TCP or TLS.
 
-### 7. Application handler
+### 9. Runtime diagnostics
 
-`app::static_files` is the current request handler.
+`src/app/runtime_events.*` is the small observer-style seam used for runtime
+visibility.
 
-It maps a validated request target into a filesystem path under the configured
-document root, rejects traversal and symlink escapes, enforces the served-file
-size limit, and builds the HTTP response.
+- accept failures are reported explicitly
+- queue-full rejections are reported explicitly
+- per-connection stage failures can be logged without crashing the process
+- unexpected worker callback exceptions remain visible
 
-Today Garçon is a static file server. Later versions can introduce routing and
-application handlers without changing the transport and framing layers.
+The default implementation logs to stderr, but the runtime depends only on the
+abstraction.
 
 ## Design patterns
 
@@ -106,6 +136,9 @@ The codebase uses a few deliberate patterns:
 
 - Producer/consumer for accepted-connection dispatch
 - Adapter for plain and TLS streams behind `net::stream`
+- Abstract Factory for stream creation
+- Strategy for request handling
+- Observer-style runtime events for diagnostics
 - RAII for sockets, TLS context, and worker lifetime
 - Dependency inversion in `worker_pool`, which depends on a callable handler
   instead of concrete HTTP types
@@ -117,23 +150,26 @@ For a successful request, the runtime flow is:
 1. `main.cpp` builds the runtime configuration.
 2. `app::server` starts the listener.
 3. The listener accepts a client socket.
-4. `work_queue` stores the socket if capacity is available.
-5. A worker thread pops the socket.
-6. The server wraps that socket as a plain or TLS `net::stream`.
-7. The stream applies timeouts and performs the TLS handshake when enabled.
-8. `http::framing` reads the request header block.
-9. `http::request` validates the request line.
-10. `app::static_files` resolves the target and builds a response.
-11. `http::response` serializes the result back through the stream.
+4. `net::accept_result` classifies the accept outcome.
+5. `work_queue` stores the socket if capacity is available.
+6. A worker thread pops the socket.
+7. `stream_factory` wraps that socket as a plain or TLS `net::stream`.
+8. The stream applies timeouts and performs the TLS handshake when enabled.
+9. `http::framing` reads the request header block.
+10. `http::request` validates the request line.
+11. `request_handler` resolves the target and builds a response.
+12. `http::response` serializes the result back through the stream.
 
-Only steps 4 and 5 are new in `v0.0.4`. The inner request pipeline is shared
-by HTTP and HTTPS and remains per-connection and worker-local.
+`v0.0.4` introduced steps 5 and 6. `v0.0.5` made steps 4, 7, and 11 explicit
+abstraction points while preserving the same external behavior.
 
 ## Relationship between releases
 
 - `v0.0.2` hardened the single-connection server
 - `v0.0.3` added HTTPS through a transport abstraction
 - `v0.0.4` added bounded concurrency around the same request pipeline
+- `v0.0.5` refined the runtime with handler, factory, diagnostics, and
+  explicit accept-result seams
 
 See [CONCURRENCY-SCALABILITY.md](/home/tstih/data/wischner/garcon/docs/CONCURRENCY-SCALABILITY.md)
 for the detailed concurrency record and

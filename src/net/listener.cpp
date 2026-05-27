@@ -18,6 +18,34 @@
 
 namespace net {
 
+namespace {
+
+bool is_fatal_accept_error(int error)
+{
+    switch (error) {
+    case EBADF:
+    case EFAULT:
+    case EINVAL:
+    case ENOTSOCK:
+    case EOPNOTSUPP:
+        return true;
+    default:
+        return false;
+    }
+}
+
+accept_result make_accept_error(int error)
+{
+    return accept_result{
+        .status = is_fatal_accept_error(error)
+            ? accept_status::fatal_error
+            : accept_status::retryable_error,
+        .error = std::error_code(error, std::generic_category()),
+    };
+}
+
+} // namespace
+
 listener::listener(std::string bind_address, int port)
     : _bind_address(std::move(bind_address))
 {
@@ -43,7 +71,7 @@ listener::listener(std::string bind_address, int port)
         throw std::runtime_error("listen() failed");
 }
 
-socket listener::accept()
+accept_result listener::accept()
 {
     sockaddr_in client{};
     socklen_t len = sizeof(client);
@@ -54,8 +82,13 @@ socket listener::accept()
                                  &len);
         if (cfd < 0 && errno == EINTR)
             continue;
+        if (cfd < 0)
+            return make_accept_error(errno);
 
-        return socket(cfd);
+        return accept_result{
+            .status = accept_status::accepted,
+            .client = socket(cfd),
+        };
     }
 }
 

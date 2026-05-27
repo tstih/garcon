@@ -2,8 +2,8 @@
 //
 // This file defines the net::listener class, which owns a listening TCP socket
 // bound to a specific port. The listener is responsible for accepting incoming
-// connections and transferring ownership of each accepted connection to a
-// net::socket instance.
+// connections and reporting whether each accept attempt succeeded, failed
+// transiently, or failed fatally.
 //
 // Copyright 2025 Tomaz Stih. All rights reserved.
 // MIT License.
@@ -12,8 +12,28 @@
 #include "net/socket.h"
 
 #include <string>
+#include <system_error>
 
 namespace net {
+
+enum class accept_status
+{
+    accepted,
+    retryable_error,
+    fatal_error,
+};
+
+struct accept_result
+{
+    accept_status status = accept_status::retryable_error;
+    socket client;
+    std::error_code error;
+
+    explicit operator bool() const
+    {
+        return status == accept_status::accepted;
+    }
+};
 
 class listener
 {
@@ -24,9 +44,9 @@ public:
     listener(std::string bind_address, int port);
 
     // Accepts an incoming connection.
-    // On success, returns a socket object that owns the connected socket
-    // descriptor. The returned socket represents a single client connection.
-    socket accept();
+    // On success, returns a connected client socket. On failure, returns an
+    // explicit status plus the corresponding system error code.
+    accept_result accept();
 
 private:
     std::string _bind_address;

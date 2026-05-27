@@ -23,12 +23,14 @@ well-structured, comprehensible foundation for modern C++ backend development.
 
 ## Current status
 
-**v0.0.4**
+**v0.0.5**
 
 - Concurrent HTTP/1.1 server with direct HTTPS support
 - Serves static files from a configurable `www/` directory
 - Strict request-line validation and safer response handling
 - Fixed-size `std::jthread` worker pool with a bounded accepted-connection queue
+- Request-handler and stream-factory seams for cleaner extensibility
+- Explicit accept-error classification and runtime diagnostics
 - Clean modular structure (`net`, `http`, `tls`, `app`)
 - Transport-neutral connection layer shared by HTTP and HTTPS
 - Local-only bind by default, with explicit opt-in for wider exposure
@@ -36,14 +38,14 @@ well-structured, comprehensible foundation for modern C++ backend development.
 - Explicit runtime tuning through `--workers` and `--queue-capacity`
 - Designed to be extended with routing, cookies, and authentication
 
-`v0.0.4` adds bounded concurrency to the hardened HTTPS baseline from
-`v0.0.3` while keeping the codebase intentionally small and layered:
+`v0.0.5` refines the `v0.0.4` runtime architecture without changing its
+external operating model:
 
-- one listener thread accepts sockets
-- a bounded queue makes connection buffering explicit
-- a fixed worker pool serves clients in parallel
-- the same HTTP/HTTPS pipeline runs inside each worker
-- the `v0.0.2` and `v0.0.3` security constraints stay in force per connection
+- accepted sockets now flow through explicit accept and admission results
+- transport creation is isolated behind a stream-factory abstraction
+- request handling is isolated behind a request-handler strategy
+- local connection failures stay visible through a small runtime-events seam
+- the `v0.0.2`, `v0.0.3`, and `v0.0.4` security and concurrency guarantees stay intact
 
 This version is intended for development, experimentation, and learning.
 It is not yet suitable for exposure to untrusted networks.
@@ -51,7 +53,8 @@ It is not yet suitable for exposure to untrusted networks.
 The transport and TLS architecture for this release is documented in
 [docs/HTTPS-v0.0.3.md](/home/tstih/data/wischner/garcon/docs/HTTPS-v0.0.3.md).
 
-The concurrency architecture introduced in `v0.0.4` is documented in
+The concurrency architecture introduced in `v0.0.4` and refined in `v0.0.5`
+is documented in
 [docs/CONCURRENCY-SCALABILITY.md](/home/tstih/data/wischner/garcon/docs/CONCURRENCY-SCALABILITY.md).
 
 ## Planned features
@@ -65,7 +68,7 @@ The concurrency architecture introduced in `v0.0.4` is documented in
 
 - [docs/HTTPS-v0.0.3.md](/home/tstih/data/wischner/garcon/docs/HTTPS-v0.0.3.md) explains the HTTPS transport design introduced in `v0.0.3`
 - [docs/CONCURRENCY-SCALABILITY.md](/home/tstih/data/wischner/garcon/docs/CONCURRENCY-SCALABILITY.md) records the bounded worker-pool architecture introduced in `v0.0.4`
-- [docs/ARCHITECTURE.md](/home/tstih/data/wischner/garcon/docs/ARCHITECTURE.md) gives a module-level overview of how Garçon fits together
+- [docs/ARCHITECTURE.md](/home/tstih/data/wischner/garcon/docs/ARCHITECTURE.md) gives a module-level overview of how Garçon fits together after the `v0.0.5` refactor
 - [docs/TUTORIAL.md](/home/tstih/data/wischner/garcon/docs/TUTORIAL.md) walks through build, configuration, HTTP, HTTPS, concurrency tuning, and packaging
 
 ## Build
@@ -107,7 +110,7 @@ By default Garçon binds only to `127.0.0.1`.
 ./bin/garcon
 ~~~
 
-`v0.0.4` chooses conservative concurrency defaults automatically:
+`v0.0.4` and `v0.0.5` choose conservative concurrency defaults automatically:
 
 - worker threads: `std::thread::hardware_concurrency()`, with a fallback of `4`
 - queue capacity: `worker_threads * 64`

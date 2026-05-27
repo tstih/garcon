@@ -9,21 +9,20 @@
 // MIT License.
 #pragma once
 
-#include "http/request.h"
-#include "http/response.h"
+#include "app/request_handler.h"
 
 #include <filesystem>
 
 namespace app {
 
-class static_files
+class static_files final : public request_handler
 {
 public:
     // Creates a static file handler rooted at the given filesystem path.
     explicit static_files(std::filesystem::path root);
 
     // Handles an HTTP request and produces a corresponding HTTP response.
-    http::response handle(const http::request& req) const;
+    http::response handle(const http::request& req) const override;
 
 private:
     std::filesystem::path _root;

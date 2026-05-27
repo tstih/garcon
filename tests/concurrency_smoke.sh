@@ -205,13 +205,17 @@ test_https_progress_with_stalled_handshake() {
 
 test_bounded_overload_recovery() {
     local port=$1
-    local slow_pid
+    local slow_pid log
 
     slow_pid=$(start_slow_http_client "$port")
     sleep 0.5
     pressure_http_server "$port"
     wait "$slow_pid" || true
     timeout 8s curl -fsS --max-time 3 "http://127.0.0.1:$port/" >/dev/null
+
+    log=$(cat "$tmpdir/server.log")
+    assert_contains "$log" "connection rejected: accepted-connection queue full" \
+        "bounded overload did not report an explicit queue-full rejection"
 }
 
 trap cleanup EXIT

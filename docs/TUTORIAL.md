@@ -2,7 +2,7 @@
 
 This tutorial shows how to build, configure, and run Garçon in development. It
 covers both HTTP and HTTPS, the packaged install layout, and the concurrency
-controls introduced in `v0.0.4`.
+controls introduced in `v0.0.4` and retained in `v0.0.5`.
 
 ## 1. Install build dependencies
 
@@ -90,6 +90,8 @@ Example:
 ~~~
 
 The startup log reports the effective worker count and queue capacity.
+`v0.0.5` also reports queue-full rejection and connection-stage diagnostics to
+stderr when those events occur.
 
 ## 6. Expose HTTP on another interface
 

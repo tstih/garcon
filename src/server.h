@@ -9,12 +9,12 @@
 // MIT License.
 #pragma once
 
+#include "app/request_handler.h"
+#include "app/runtime_events.h"
+#include "app/stream_factory.h"
 #include "app/work_queue.h"
-#include "app/worker_pool.h"
 #include "net/listener.h"
 #include "server_config.h"
-#include "static_files.h"
-#include "tls/context.h"
 
 #include <chrono>
 #include <memory>
@@ -39,13 +39,16 @@ private:
 
     server_config _config;
     net::listener _listener;
-    static_files  _files;
-    std::unique_ptr<tls::context> _tls_context;
+    std::unique_ptr<request_handler> _handler;
+    std::unique_ptr<stream_factory> _stream_factory;
+    std::unique_ptr<runtime_events> _events;
 
     // Handles a single client connection.
     void handle_connection(net::socket client);
 
-    std::unique_ptr<net::stream> create_stream(net::socket client) const;
+    void handle_accept_result(const net::accept_result& accepted) const;
+    void handle_queue_result(queue_push_result result) const;
+    void send_response(net::stream& client, http::response response) const;
     bool prepare_stream(net::stream& client) const;
     void serve_client(net::stream& client) const;
     void accept_loop(work_queue& queue);

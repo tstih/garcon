@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -21,9 +22,12 @@ class worker_pool
 {
 public:
     using handler_type = std::function<void(net::socket)>;
+    using error_handler_type = std::function<void(std::string_view)>;
 
-    worker_pool(work_queue& queue, handler_type handler, std::size_t worker_count);
-    worker_pool(std::size_t worker_count, work_queue& queue, handler_type handler);
+    worker_pool(work_queue& queue,
+                handler_type handler,
+                std::size_t worker_count,
+                error_handler_type on_error = {});
     worker_pool(const worker_pool&) = delete;
     worker_pool& operator=(const worker_pool&) = delete;
     ~worker_pool();
@@ -37,6 +41,7 @@ private:
 
     work_queue& _queue;
     handler_type _handler;
+    error_handler_type _on_error;
     std::vector<std::jthread> _workers;
 };
 

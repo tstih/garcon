@@ -15,9 +15,11 @@ namespace app {
 
 worker_pool::worker_pool(work_queue& queue,
                          handler_type handler,
-                         std::size_t worker_count)
+                         std::size_t worker_count,
+                         error_handler_type on_error)
     : _queue(queue),
-      _handler(std::move(handler))
+      _handler(std::move(handler)),
+      _on_error(std::move(on_error))
 {
     if (!_handler)
         throw std::invalid_argument("worker_pool handler must not be empty");
@@ -25,13 +27,6 @@ worker_pool::worker_pool(work_queue& queue,
         throw std::invalid_argument("worker_pool must have at least one worker");
 
     start_workers(worker_count);
-}
-
-worker_pool::worker_pool(std::size_t worker_count,
-                         work_queue& queue,
-                         handler_type handler)
-    : worker_pool(queue, std::move(handler), worker_count)
-{
 }
 
 worker_pool::~worker_pool()
@@ -72,8 +67,12 @@ void worker_pool::run_worker(std::stop_token stop)
 
         try {
             _handler(std::move(*socket));
+        } catch (const std::exception& e) {
+            if (_on_error)
+                _on_error(e.what());
         } catch (...) {
-            // Keep the pool alive after a per-connection failure.
+            if (_on_error)
+                _on_error("unknown worker exception");
         }
     }
 }

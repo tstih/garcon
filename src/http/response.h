@@ -19,7 +19,7 @@ namespace http {
 struct response
 {
     int status = 200;
-    std::string_view reason = "OK";
+    std::string reason = "OK";
     std::string content_type;
     std::string body;
     std::optional<std::size_t> content_length;

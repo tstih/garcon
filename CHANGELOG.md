@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.0.5] - Unreleased
+### Refactored
+- Introduced an explicit accept-result model so listener failures are classified as retryable or fatal instead of collapsing into invalid sockets.
+- Added a request-handler abstraction and moved static file serving behind that strategy seam.
+- Added a stream-factory abstraction so the server runtime no longer depends directly on concrete plain-TCP or TLS stream types.
+- Moved command-line parsing into a dedicated `app::command_line_parser`.
+- Made `http::response` fully owning by storing the reason phrase as `std::string`.
+
+### Operational
+- Added stderr-backed runtime diagnostics for accept failures, queue-full rejections, connection-stage failures, and unexpected worker callback exceptions.
+- Added retry backoff for retryable accept failures to avoid tight busy-spin behavior.
+
+### Verified
+- Extended concurrency smoke coverage to assert that bounded overload now produces an explicit queue-full runtime diagnostic.
+
 ## [v0.0.4] - Unreleased
 ### Added
 - Bounded concurrency using a fixed-size pool of standard C++ worker threads and a bounded accepted-connection queue.
