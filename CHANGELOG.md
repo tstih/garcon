@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.0.4] - Unreleased
+### Added
+- Bounded concurrency using a fixed-size pool of standard C++ worker threads and a bounded accepted-connection queue.
+- New `app::work_queue` and `app::worker_pool` modules to keep queueing, worker lifetime, and per-connection handling separated cleanly.
+- Explicit runtime tuning for worker count and queue capacity through `--workers` and `--queue-capacity`.
+- Shared HTTP and HTTPS request handling through the existing transport-neutral stream abstraction.
+
+### Verified
+- Added end-to-end concurrency smoke coverage for slow HTTP clients, stalled TLS handshakes, and bounded overload recovery.
+- Preserved the existing HTTP security and HTTPS smoke-test coverage under the new worker-pool runtime.
+
+### Documented
+- Added the `v0.0.4` concurrency architecture record in `docs/CONCURRENCY-SCALABILITY.md`.
+- Added `docs/ARCHITECTURE.md` to describe how the main runtime modules fit together.
+- Added `docs/TUTORIAL.md` with build, configuration, HTTP, HTTPS, packaging, and concurrency guidance.
+
 ## [v0.0.3] - Unreleased
 ### Added
 - Direct HTTPS mode using OpenSSL while keeping the existing HTTP and static-file pipeline intact.

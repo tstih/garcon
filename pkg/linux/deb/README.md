@@ -27,3 +27,7 @@ The package installs:
 
 At runtime Garçon prefers a local `www/` directory for development, and falls
 back to `/usr/share/garcon/www` when running from an installed package.
+
+The installed binary accepts the same runtime flags as the development build,
+including `--bind`, `--port`, `--tls-cert`, `--tls-key`, `--workers`, and
+`--queue-capacity`.

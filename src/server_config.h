@@ -1,14 +1,15 @@
 // Server configuration model.
 //
 // This file defines the app::server_config structure used to configure the
-// listener address, port, document root, and optional TLS credentials for a
-// Garçon server instance.
+// listener address, port, document root, concurrency settings, and optional
+// TLS credentials for a Garçon server instance.
 //
 // Copyright 2025 Tomaz Stih. All rights reserved.
 // MIT License.
 #pragma once
 
 #include <filesystem>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,6 +27,8 @@ struct server_config
     std::string bind_address = "127.0.0.1";
     int port = 8080;
     std::filesystem::path www_root = "www";
+    std::size_t worker_threads = 4;
+    std::size_t connection_queue_capacity = 256;
     std::optional<tls_config> tls;
 
     bool https_enabled() const

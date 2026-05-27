@@ -9,6 +9,8 @@
 // MIT License.
 #pragma once
 
+#include "app/work_queue.h"
+#include "app/worker_pool.h"
 #include "net/listener.h"
 #include "server_config.h"
 #include "static_files.h"
@@ -46,6 +48,7 @@ private:
     std::unique_ptr<net::stream> create_stream(net::socket client) const;
     bool prepare_stream(net::stream& client) const;
     void serve_client(net::stream& client) const;
+    void accept_loop(work_queue& queue);
 };
 
 } // namespace app

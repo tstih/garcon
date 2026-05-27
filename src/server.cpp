@@ -40,7 +40,14 @@ void log_startup(const server_config& config)
               << config.bind_address
               << ':'
               << config.port
-              << "/\n"
+              << "/"
+              << " with "
+              << config.worker_threads
+              << " worker"
+              << (config.worker_threads == 1 ? "" : "s")
+              << " and queue capacity "
+              << config.connection_queue_capacity
+              << "\n"
               << std::flush;
 }
 
@@ -57,13 +64,14 @@ server::server(server_config config)
 
 void server::run()
 {
-    for (;;) {
-        auto c = _listener.accept();
-        if (!c.valid())
-            continue;
+    work_queue queue(_config.connection_queue_capacity);
+    worker_pool workers(queue,
+                        [this](net::socket client) {
+                            handle_connection(std::move(client));
+                        },
+                        _config.worker_threads);
 
-        handle_connection(std::move(c));
-    }
+    accept_loop(queue);
 }
 
 std::unique_ptr<net::stream> server::create_stream(net::socket client) const
@@ -131,6 +139,17 @@ void server::handle_connection(net::socket client)
         serve_client(*stream);
     } catch (const std::exception&) {
         return;
+    }
+}
+
+void server::accept_loop(work_queue& queue)
+{
+    for (;;) {
+        auto client = _listener.accept();
+        if (!client.valid())
+            continue;
+
+        queue.try_push(std::move(client));
     }
 }
 

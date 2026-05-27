@@ -13,7 +13,7 @@ architecturally clean.
 Garçon is built with the following principles in mind:
 
 - **Minimalism** - no frameworks, no magic, only what is necessary
-- **Modern C++** - C++20, RAII, value semantics, explicit ownership
+- **Modern C++** - C++23, RAII, value semantics, explicit ownership
 - **Clear layering** - transport, HTTP, and application logic are kept separate
 - **Incremental evolution** - each feature is added in small, reviewable steps
 - **Security-aware** - correctness and security are considered from the start
@@ -23,26 +23,27 @@ well-structured, comprehensible foundation for modern C++ backend development.
 
 ## Current status
 
-**v0.0.3**
+**v0.0.4**
 
-- Single-threaded HTTP/1.1 server with direct HTTPS support
+- Concurrent HTTP/1.1 server with direct HTTPS support
 - Serves static files from a configurable `www/` directory
 - Strict request-line validation and safer response handling
-- Clean modular structure (`net`, `http`, `app`)
+- Fixed-size `std::jthread` worker pool with a bounded accepted-connection queue
+- Clean modular structure (`net`, `http`, `tls`, `app`)
 - Transport-neutral connection layer shared by HTTP and HTTPS
 - Local-only bind by default, with explicit opt-in for wider exposure
 - Document-root containment checks and bounded file serving
+- Explicit runtime tuning through `--workers` and `--queue-capacity`
 - Designed to be extended with routing, cookies, and authentication
 
-`v0.0.3` adds direct HTTPS support to the hardened `v0.0.2` baseline while
-keeping the codebase intentionally small and layered:
+`v0.0.4` adds bounded concurrency to the hardened HTTPS baseline from
+`v0.0.3` while keeping the codebase intentionally small and layered:
 
-- HTTPS mode through OpenSSL with explicit certificate and private-key configuration
-- Local-only exposure by default unless wider network access is explicitly enabled
-- Strict request-line validation with early rejection of malformed input
-- Connection time limits so stalled clients cannot block the process indefinitely
-- Document-root containment checks that reject traversal and symlink escapes
-- Bounded file serving so files larger than 8 MiB fail safely
+- one listener thread accepts sockets
+- a bounded queue makes connection buffering explicit
+- a fixed worker pool serves clients in parallel
+- the same HTTP/HTTPS pipeline runs inside each worker
+- the `v0.0.2` and `v0.0.3` security constraints stay in force per connection
 
 This version is intended for development, experimentation, and learning.
 It is not yet suitable for exposure to untrusted networks.
@@ -50,13 +51,22 @@ It is not yet suitable for exposure to untrusted networks.
 The transport and TLS architecture for this release is documented in
 [docs/HTTPS-v0.0.3.md](/home/tstih/data/wischner/garcon/docs/HTTPS-v0.0.3.md).
 
+The concurrency architecture introduced in `v0.0.4` is documented in
+[docs/CONCURRENCY-SCALABILITY.md](/home/tstih/data/wischner/garcon/docs/CONCURRENCY-SCALABILITY.md).
+
 ## Planned features
 
 - Request routing and handler plugins
 - Cookie parsing and session management
 - OAuth 2.0 and OpenID Connect (OIDC) support
 - Basic JSON-based web APIs
-- Concurrency and scalability improvements
+
+## Documentation
+
+- [docs/HTTPS-v0.0.3.md](/home/tstih/data/wischner/garcon/docs/HTTPS-v0.0.3.md) explains the HTTPS transport design introduced in `v0.0.3`
+- [docs/CONCURRENCY-SCALABILITY.md](/home/tstih/data/wischner/garcon/docs/CONCURRENCY-SCALABILITY.md) records the bounded worker-pool architecture introduced in `v0.0.4`
+- [docs/ARCHITECTURE.md](/home/tstih/data/wischner/garcon/docs/ARCHITECTURE.md) gives a module-level overview of how Garçon fits together
+- [docs/TUTORIAL.md](/home/tstih/data/wischner/garcon/docs/TUTORIAL.md) walks through build, configuration, HTTP, HTTPS, concurrency tuning, and packaging
 
 ## Build
 
@@ -97,11 +107,22 @@ By default Garçon binds only to `127.0.0.1`.
 ./bin/garcon
 ~~~
 
+`v0.0.4` chooses conservative concurrency defaults automatically:
+
+- worker threads: `std::thread::hardware_concurrency()`, with a fallback of `4`
+- queue capacity: `worker_threads * 64`
+
+You can tune both at runtime:
+
+~~~sh
+./bin/garcon --workers 4 --queue-capacity 256
+~~~
+
 To run HTTPS locally with a certificate and key, provide both files
 explicitly. HTTPS defaults to port `8443` unless `--port` is set:
 
 ~~~sh
-./bin/garcon --tls-cert cert.pem --tls-key key.pem
+./bin/garcon --tls-cert cert.pem --tls-key key.pem --workers 8 --queue-capacity 512
 ~~~
 
 To listen on a different interface, make the choice explicit for either HTTP
@@ -111,6 +132,10 @@ or HTTPS:
 ./bin/garcon --bind 0.0.0.0 --port 8080
 ./bin/garcon --bind 0.0.0.0 --tls-cert cert.pem --tls-key key.pem --port 8443
 ~~~
+
+For a fuller operator walkthrough, including packaging and concurrency tuning,
+see
+[docs/TUTORIAL.md](/home/tstih/data/wischner/garcon/docs/TUTORIAL.md).
 
 ## Packaging
 
