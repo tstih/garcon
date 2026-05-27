@@ -8,6 +8,7 @@
 // MIT License.
 #include "net/listener.h"
 
+#include <cerrno>
 #include <cstdint>
 #include <stdexcept>
 
@@ -17,19 +18,23 @@
 
 namespace net {
 
-listener::listener(int port)
+listener::listener(std::string bind_address, int port)
+    : _bind_address(std::move(bind_address))
 {
     _sock = socket(::socket(AF_INET, SOCK_STREAM, 0));
     if (!_sock.valid())
         throw std::runtime_error("socket() failed");
 
     int yes = 1;
-    ::setsockopt(_sock.fd(), SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    if (::setsockopt(_sock.fd(), SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) != 0)
+        throw std::runtime_error("setsockopt(SO_REUSEADDR) failed");
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(static_cast<std::uint16_t>(port));
+
+    if (::inet_pton(AF_INET, _bind_address.c_str(), &addr.sin_addr) != 1)
+        throw std::runtime_error("invalid IPv4 bind address");
 
     if (::bind(_sock.fd(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
         throw std::runtime_error("bind() failed");
@@ -43,10 +48,15 @@ socket listener::accept()
     sockaddr_in client{};
     socklen_t len = sizeof(client);
 
-    const int cfd = ::accept(_sock.fd(),
-                             reinterpret_cast<sockaddr*>(&client),
-                             &len);
-    return socket(cfd);
+    for (;;) {
+        const int cfd = ::accept(_sock.fd(),
+                                 reinterpret_cast<sockaddr*>(&client),
+                                 &len);
+        if (cfd < 0 && errno == EINTR)
+            continue;
+
+        return socket(cfd);
+    }
 }
 
 } // namespace net

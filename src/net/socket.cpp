@@ -8,10 +8,40 @@
 // MIT License.
 #include "net/socket.h"
 
+#include <cerrno>
+#include <chrono>
+#include <cstdint>
+
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 namespace net {
+
+namespace {
+
+timeval to_timeval(std::chrono::milliseconds timeout)
+{
+    if (timeout.count() < 0)
+        timeout = std::chrono::milliseconds::zero();
+
+    const auto secs = std::chrono::duration_cast<std::chrono::seconds>(timeout);
+    const auto usecs = std::chrono::duration_cast<std::chrono::microseconds>(timeout - secs);
+
+    return timeval{
+        .tv_sec = static_cast<decltype(timeval::tv_sec)>(secs.count()),
+        .tv_usec = static_cast<decltype(timeval::tv_usec)>(usecs.count()),
+    };
+}
+
+io_status status_from_errno(int error)
+{
+    if (error == EAGAIN || error == EWOULDBLOCK)
+        return io_status::timeout;
+    return io_status::error;
+}
+
+} // namespace
 
 socket::socket() : _fd(-1) {}
 
@@ -55,35 +85,71 @@ void socket::close()
     }
 }
 
-std::ptrdiff_t socket::recv(std::span<std::byte> out)
+bool socket::set_receive_timeout(std::chrono::milliseconds timeout)
 {
-    const auto rc = ::recv(_fd, out.data(), out.size(), 0);
-    return static_cast<std::ptrdiff_t>(rc);
+    const auto tv = to_timeval(timeout);
+    return ::setsockopt(_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0;
 }
 
-bool socket::send(std::span<const std::byte> data)
+bool socket::set_send_timeout(std::chrono::milliseconds timeout)
+{
+    const auto tv = to_timeval(timeout);
+    return ::setsockopt(_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == 0;
+}
+
+read_result socket::recv_some(std::span<std::byte> out)
+{
+    for (;;) {
+        const auto rc = ::recv(_fd, out.data(), out.size(), 0);
+        if (rc < 0 && errno == EINTR)
+            continue;
+
+        if (rc > 0) {
+            return read_result{
+                .status = io_status::ok,
+                .bytes_read = static_cast<std::size_t>(rc),
+            };
+        }
+
+        if (rc == 0)
+            return read_result{.status = io_status::closed};
+
+        return read_result{.status = status_from_errno(errno)};
+    }
+}
+
+io_status socket::send_all(std::span<const std::byte> data)
 {
     std::size_t sent = 0;
 
     // Loop until the entire buffer has been written to the socket.
     while (sent < data.size()) {
+#ifdef MSG_NOSIGNAL
+        constexpr int flags = MSG_NOSIGNAL;
+#else
+        constexpr int flags = 0;
+#endif
         const auto rc = ::send(_fd,
                                data.data() + sent,
                                data.size() - sent,
-                               0);
-        if (rc <= 0)
-            return false;
+                               flags);
+        if (rc < 0 && errno == EINTR)
+            continue;
+        if (rc == 0)
+            return io_status::closed;
+        if (rc < 0)
+            return status_from_errno(errno);
 
         sent += static_cast<std::size_t>(rc);
     }
 
-    return true;
+    return io_status::ok;
 }
 
-bool socket::send(std::string_view s)
+io_status socket::send_all(std::string_view s)
 {
     const auto* p = reinterpret_cast<const std::byte*>(s.data());
-    return send(std::span<const std::byte>(p, s.size()));
+    return send_all(std::span<const std::byte>(p, s.size()));
 }
 
 } // namespace net

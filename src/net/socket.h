@@ -12,6 +12,9 @@
 // MIT License.
 #pragma once
 
+#include "net/io.h"
+
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -57,15 +60,19 @@ public:
     // Safe to call multiple times.
     void close();
 
+    // Sets a receive timeout for blocking reads on this socket.
+    bool set_receive_timeout(std::chrono::milliseconds timeout);
+
+    // Sets a send timeout for blocking writes on this socket.
+    bool set_send_timeout(std::chrono::milliseconds timeout);
+
     // Receives up to out.size() bytes from the socket.
-    // Returns the number of bytes received, 0 on orderly shutdown,
-    // or a negative value on error.
-    std::ptrdiff_t recv(std::span<std::byte> out);
+    // Returns a status plus the number of bytes received on success.
+    read_result recv_some(std::span<std::byte> out);
 
     // Sends the entire buffer to the socket.
-    // Returns true on success, false on failure.
-    bool send(std::span<const std::byte> data);
-    bool send(std::string_view s);
+    io_status send_all(std::span<const std::byte> data);
+    io_status send_all(std::string_view s);
 
 private:
     int _fd;

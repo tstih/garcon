@@ -9,6 +9,8 @@
 // MIT License.
 #pragma once
 
+#include <optional>
+#include <cstddef>
 #include <string>
 #include <string_view>
 
@@ -20,6 +22,7 @@ struct response
     std::string_view reason = "OK";
     std::string content_type;
     std::string body;
+    std::optional<std::size_t> content_length;
 
     // Serializes the response into an HTTP/1.1 response message.
     std::string serialize() const;

@@ -1,2 +1,7 @@
+# Output directories.
 build/
 bin/
+
+# Agent directories.
+.agents/
+.codex/

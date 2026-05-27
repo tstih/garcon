@@ -1,0 +1,3 @@
+Garcon is a lean and minimal HTTP/HTTPS web server written in modern C++.
+This Debian package installs the server binary, the bundled static web-root,
+and the project documentation.

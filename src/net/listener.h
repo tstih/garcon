@@ -11,6 +11,8 @@
 
 #include "net/socket.h"
 
+#include <string>
+
 namespace net {
 
 class listener
@@ -19,7 +21,7 @@ public:
     // Creates a listening socket bound to the given TCP port and starts
     // listening for incoming connections.
     // Throws an exception if socket creation, binding, or listening fails.
-    explicit listener(int port);
+    listener(std::string bind_address, int port);
 
     // Accepts an incoming connection.
     // On success, returns a socket object that owns the connected socket
@@ -27,6 +29,8 @@ public:
     socket accept();
 
 private:
+    std::string _bind_address;
+
     // Listening socket that owns the bound socket descriptor.
     socket _sock;
 };

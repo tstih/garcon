@@ -10,28 +10,42 @@
 #pragma once
 
 #include "net/listener.h"
+#include "server_config.h"
 #include "static_files.h"
+#include "tls/context.h"
 
-#include <filesystem>
+#include <chrono>
+#include <memory>
+
+namespace net {
+class stream;
+}
 
 namespace app {
 
 class server
 {
 public:
-    // Creates an HTTP server listening on the given TCP port and serving
-    // files from the specified root directory.
-    server(int port, std::filesystem::path www_root);
+    // Creates an HTTP or HTTPS server using the supplied runtime config.
+    explicit server(server_config config);
 
     // Runs the server accept loop. This call blocks indefinitely.
     void run();
 
 private:
+    static constexpr auto io_timeout = std::chrono::seconds(5);
+
+    server_config _config;
     net::listener _listener;
     static_files  _files;
+    std::unique_ptr<tls::context> _tls_context;
 
     // Handles a single client connection.
     void handle_connection(net::socket client);
+
+    std::unique_ptr<net::stream> create_stream(net::socket client) const;
+    bool prepare_stream(net::stream& client) const;
+    void serve_client(net::stream& client) const;
 };
 
 } // namespace app

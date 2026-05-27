@@ -20,25 +20,45 @@ static std::size_t find_header_end(std::string_view v)
     return p + 4;
 }
 
-std::optional<std::string_view> read_header_block(net::socket& s,
-                                                  buffer& b,
-                                                  std::size_t max_bytes)
+header_read_result read_header_block(net::stream& s,
+                                     buffer& b,
+                                     std::size_t max_bytes)
 {
     for (;;) {
         const auto view = b.as_string_view();
         const auto end = find_header_end(view);
         if (end != std::string_view::npos)
-            return view.substr(0, end);
+            return header_read_result{
+                .status = header_read_status::ok,
+                .header = view.substr(0, end),
+            };
 
         if (view.size() >= max_bytes)
-            return std::nullopt;
+            return header_read_result{
+                .status = header_read_status::too_large,
+            };
 
         auto out = b.write_span();
-        const auto rc = s.recv(out);
-        if (rc <= 0)
-            return std::nullopt;
+        const auto rc = s.recv_some(out);
+        if (rc.status == net::io_status::closed) {
+            return header_read_result{
+                .status = header_read_status::closed,
+            };
+        }
 
-        b.commit(static_cast<std::size_t>(rc));
+        if (rc.status == net::io_status::timeout) {
+            return header_read_result{
+                .status = header_read_status::timeout,
+            };
+        }
+
+        if (rc.status == net::io_status::error) {
+            return header_read_result{
+                .status = header_read_status::error,
+            };
+        }
+
+        b.commit(rc.bytes_read);
     }
 }
 

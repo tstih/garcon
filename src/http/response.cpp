@@ -15,10 +15,12 @@ namespace http {
 
 std::string response::serialize() const
 {
+    const auto wire_body_size = content_length.value_or(body.size());
+
     std::ostringstream oss;
     oss << "HTTP/1.1 " << status << ' ' << reason << "\r\n";
     oss << "Connection: close\r\n";
-    oss << "Content-Length: " << body.size() << "\r\n";
+    oss << "Content-Length: " << wire_body_size << "\r\n";
     if (!content_type.empty())
         oss << "Content-Type: " << content_type << "\r\n";
     oss << "\r\n";
