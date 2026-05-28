@@ -50,7 +50,7 @@ listener::listener(std::string bind_address, int port)
     : _bind_address(std::move(bind_address))
 {
     _sock = socket(::socket(AF_INET, SOCK_STREAM, 0));
-    if (!_sock.valid())
+    if (!_sock.is_valid())
         throw std::runtime_error("socket() failed");
 
     int yes = 1;

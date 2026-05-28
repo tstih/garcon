@@ -23,12 +23,14 @@ well-structured, comprehensible foundation for modern C++ backend development.
 
 ## Current status
 
-**v0.0.5**
+**v0.0.6**
 
 - Concurrent HTTP/1.1 server with direct HTTPS support
 - Serves static files from a configurable `www/` directory
 - Strict request-line validation and safer response handling
 - Fixed-size `std::jthread` worker pool with a bounded accepted-connection queue
+- Ordered request pipeline with `pass`, `respond`, `upgrade`, and `error` outcomes
+- `static_files_module` extracted as the first concrete pipeline module
 - Request-handler and stream-factory seams for cleaner extensibility
 - Explicit accept-error classification and runtime diagnostics
 - Clean modular structure (`net`, `http`, `tls`, `app`)
@@ -38,24 +40,21 @@ well-structured, comprehensible foundation for modern C++ backend development.
 - Explicit runtime tuning through `--workers` and `--queue-capacity`
 - Designed to be extended with routing, cookies, and authentication
 
-`v0.0.5` refines the `v0.0.4` runtime architecture without changing its
-external operating model:
+`v0.0.6` builds on `v0.0.5` by introducing the simplified module pipeline we
+discussed:
 
-- accepted sockets now flow through explicit accept and admission results
-- transport creation is isolated behind a stream-factory abstraction
-- request handling is isolated behind a request-handler strategy
-- local connection failures stay visible through a small runtime-events seam
-- the `v0.0.2`, `v0.0.3`, and `v0.0.4` security and concurrency guarantees stay intact
+- requests now flow through an ordered root pipeline
+- each module can `pass`, `respond`, request a future `upgrade`, or signal `error`
+- static-file serving is no longer wired directly into the server runtime
+- the first extracted module is `static_files_module`, backed by a reusable file-serving service
+- the `v0.0.2` through `v0.0.5` security and concurrency guarantees stay intact
 
 This version is intended for development, experimentation, and learning.
 It is not yet suitable for exposure to untrusted networks.
 
-The transport and TLS architecture for this release is documented in
-[docs/HTTPS-v0.0.3.md](/home/tstih/data/wischner/garcon/docs/HTTPS-v0.0.3.md).
-
-The concurrency architecture introduced in `v0.0.4` and refined in `v0.0.5`
-is documented in
-[docs/CONCURRENCY-SCALABILITY.md](/home/tstih/data/wischner/garcon/docs/CONCURRENCY-SCALABILITY.md).
+The consolidated transport, TLS, concurrency, and module architecture for this
+release is documented in
+[docs/ARCHITECTURE.md](/home/tstih/data/wischner/garcon/docs/ARCHITECTURE.md).
 
 ## Planned features
 
@@ -66,9 +65,7 @@ is documented in
 
 ## Documentation
 
-- [docs/HTTPS-v0.0.3.md](/home/tstih/data/wischner/garcon/docs/HTTPS-v0.0.3.md) explains the HTTPS transport design introduced in `v0.0.3`
-- [docs/CONCURRENCY-SCALABILITY.md](/home/tstih/data/wischner/garcon/docs/CONCURRENCY-SCALABILITY.md) records the bounded worker-pool architecture introduced in `v0.0.4`
-- [docs/ARCHITECTURE.md](/home/tstih/data/wischner/garcon/docs/ARCHITECTURE.md) gives a module-level overview of how Garçon fits together after the `v0.0.5` refactor
+- [docs/ARCHITECTURE.md](/home/tstih/data/wischner/garcon/docs/ARCHITECTURE.md) gives the detailed design overview for Garçon's transport, TLS, concurrency, pipeline, and static-file layers
 - [docs/TUTORIAL.md](/home/tstih/data/wischner/garcon/docs/TUTORIAL.md) walks through build, configuration, HTTP, HTTPS, concurrency tuning, and packaging
 
 ## Build
@@ -110,7 +107,7 @@ By default Garçon binds only to `127.0.0.1`.
 ./bin/garcon
 ~~~
 
-`v0.0.4` and `v0.0.5` choose conservative concurrency defaults automatically:
+`v0.0.4` through `v0.0.6` choose conservative concurrency defaults automatically:
 
 - worker threads: `std::thread::hardware_concurrency()`, with a fallback of `4`
 - queue capacity: `worker_threads * 64`

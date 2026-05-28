@@ -6,28 +6,17 @@
 // Copyright 2025 Tomaz Stih. All rights reserved.
 // MIT License.
 #include "tls/stream.h"
+#include "tls/tls_error.h"
 
 #include <cerrno>
+#include <memory>
 #include <stdexcept>
-#include <string>
-#include <string_view>
 
 #include <openssl/err.h>
 
 namespace tls {
 
 namespace {
-
-std::string ssl_error_message(std::string_view prefix)
-{
-    const auto code = ::ERR_get_error();
-    if (code == 0)
-        return std::string(prefix);
-
-    char buf[256];
-    ::ERR_error_string_n(code, buf, sizeof(buf));
-    return std::string(prefix) + ": " + buf;
-}
 
 net::io_status map_ssl_status(SSL* ssl, int rc)
 {
@@ -52,16 +41,15 @@ net::io_status map_ssl_status(SSL* ssl, int rc)
 
 SSL* create_ssl(SSL_CTX* ctx, int fd)
 {
-    SSL* ssl = ::SSL_new(ctx);
+    using ssl_ptr = std::unique_ptr<SSL, decltype(&::SSL_free)>;
+    ssl_ptr ssl(::SSL_new(ctx), &::SSL_free);
     if (!ssl)
         throw std::runtime_error(ssl_error_message("failed to create TLS connection state"));
 
-    if (::SSL_set_fd(ssl, fd) != 1) {
-        ::SSL_free(ssl);
+    if (::SSL_set_fd(ssl.get(), fd) != 1)
         throw std::runtime_error(ssl_error_message("failed to bind TLS state to socket"));
-    }
 
-    return ssl;
+    return ssl.release();
 }
 
 } // namespace
@@ -72,9 +60,9 @@ stream::stream(const context& tls_context, net::socket socket)
 {
 }
 
-bool stream::valid() const
+bool stream::is_valid() const
 {
-    return _socket.valid() && static_cast<bool>(_ssl);
+    return _socket.is_valid() && static_cast<bool>(_ssl);
 }
 
 void stream::close()

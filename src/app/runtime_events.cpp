@@ -16,11 +16,7 @@ namespace app {
 
 namespace {
 
-std::mutex& log_mutex()
-{
-    static std::mutex mutex;
-    return mutex;
-}
+static std::mutex s_log_mutex;
 
 std::string make_accept_message(const std::error_code& error, bool fatal)
 {
@@ -72,7 +68,7 @@ void stderr_runtime_events::on_worker_error(std::string_view detail)
 void stderr_runtime_events::write_line(std::string_view level,
                                        std::string_view message)
 {
-    std::lock_guard lock(log_mutex());
+    std::lock_guard lock(s_log_mutex);
     std::clog << '[' << level << "] " << message << '\n';
 }
 

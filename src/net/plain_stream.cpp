@@ -15,9 +15,9 @@ plain_stream::plain_stream(socket socket)
 {
 }
 
-bool plain_stream::valid() const
+bool plain_stream::is_valid() const
 {
-    return _socket.valid();
+    return _socket.is_valid();
 }
 
 void plain_stream::close()

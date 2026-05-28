@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.0.6] - Unreleased
+### Added
+- Introduced a small ordered request pipeline with four module outcomes: `pass`, `respond`, `upgrade`, and `error`.
+- Added `app::request_module` and `app::request_pipeline` as the new request-handling core.
+- Extracted `static_files_module` as the first concrete pipeline module.
+
+### Refactored
+- Returned `static_files` to a reusable file-serving service instead of letting it double as the root request abstraction.
+- Wired the server runtime to build its root handler from the ordered pipeline rather than binding directly to the static-files path.
+
+### Verified
+- Preserved the existing HTTP security, HTTPS, and concurrency smoke-test coverage after moduleizing the static-files path.
+
 ## [v0.0.5] - Unreleased
 ### Refactored
 - Introduced an explicit accept-result model so listener failures are classified as retryable or fatal instead of collapsing into invalid sockets.

@@ -23,7 +23,7 @@ class stream
 public:
     virtual ~stream() = default;
 
-    virtual bool valid() const = 0;
+    virtual bool is_valid() const = 0;
     virtual void close() = 0;
 
     virtual bool set_receive_timeout(std::chrono::milliseconds timeout) = 0;

@@ -67,7 +67,7 @@ socket::~socket()
     close();
 }
 
-bool socket::valid() const
+bool socket::is_valid() const
 {
     return _fd >= 0;
 }

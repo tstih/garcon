@@ -10,14 +10,15 @@
 #include "server.h"
 
 #include "app/default_stream_factory.h"
+#include "app/request_pipeline.h"
 #include "app/worker_pool.h"
+#include "config.h"
 #include "http/buffer.h"
 #include "http/framing.h"
 #include "http/request.h"
 #include "http/response.h"
-#include "static_files.h"
+#include "modules/static_files_module.h"
 
-#include <chrono>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -26,8 +27,6 @@
 namespace app {
 
 namespace {
-
-constexpr auto accept_error_backoff = std::chrono::milliseconds(50);
 
 void log_startup(const server_config& config)
 {
@@ -50,7 +49,9 @@ void log_startup(const server_config& config)
 
 std::unique_ptr<request_handler> create_request_handler(const server_config& config)
 {
-    return std::make_unique<static_files>(config.www_root);
+    auto pipeline = std::make_unique<request_pipeline>();
+    pipeline->add_module(std::make_unique<static_files_module>(config.www_root));
+    return pipeline;
 }
 
 } // namespace
@@ -90,7 +91,7 @@ void server::handle_accept_result(const net::accept_result& accepted) const
     if (fatal)
         throw std::runtime_error("fatal accept() failure");
 
-    std::this_thread::sleep_for(accept_error_backoff);
+    std::this_thread::sleep_for(garcon::config::accept_retry_delay);
 }
 
 void server::handle_queue_result(queue_push_result result) const
@@ -186,8 +187,10 @@ void server::handle_connection(net::socket client)
 {
     try {
         auto stream = _stream_factory->create(std::move(client));
-        if (!stream || !stream->valid())
+        if (!stream || !stream->is_valid()) {
+            _events->on_connection_error("create-stream", "stream creation failed");
             return;
+        }
 
         if (!prepare_stream(*stream))
             return;

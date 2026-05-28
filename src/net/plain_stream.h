@@ -18,7 +18,7 @@ class plain_stream final : public stream
 public:
     explicit plain_stream(socket socket);
 
-    bool valid() const override;
+    bool is_valid() const override;
     void close() override;
 
     bool set_receive_timeout(std::chrono::milliseconds timeout) override;

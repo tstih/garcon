@@ -50,7 +50,7 @@ public:
     ~socket();
 
     // Returns true if this object currently owns a valid socket descriptor.
-    bool valid() const;
+    bool is_valid() const;
 
     // Returns the underlying socket file descriptor.
     // Intended for low-level operations only.

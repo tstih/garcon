@@ -1,4 +1,4 @@
-// Implementation of the static file request handler.
+// Implementation of the static file serving service.
 //
 // This file implements the app::static_files class and supporting helpers for
 // serving files from a fixed directory on disk. It includes logic for safely
@@ -9,9 +9,12 @@
 // MIT License.
 #include "static_files.h"
 
+#include "config.h"
+
 #include <fstream>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string_view>
 #include <system_error>
 
@@ -20,8 +23,6 @@ namespace fs = std::filesystem;
 namespace app {
 
 namespace {
-
-constexpr std::uintmax_t max_served_file_size = 8U * 1024U * 1024U;
 
 std::optional<std::string> read_file_bytes(const fs::path& p,
                                            std::uintmax_t size)
@@ -126,6 +127,9 @@ bool is_within_root(const fs::path& root, const fs::path& candidate)
     return root_it == root.end();
 }
 
+// Resolves a relative path under root, confirming it stays within root.
+// Returns nullopt if the path escapes root or canonical resolution fails.
+// Does NOT check whether the resolved path is a regular file — callers do that.
 std::optional<fs::path> resolve_under_root(const fs::path& root,
                                            const fs::path& relative)
 {
@@ -133,11 +137,11 @@ std::optional<fs::path> resolve_under_root(const fs::path& root,
         return std::nullopt;
 
     std::error_code ec;
-    const auto resolved = fs::weakly_canonical(root / relative, ec);
+    // canonical() fully resolves all symlinks — weakly_canonical() would leave
+    // symlink components unresolved, potentially allowing a symlink inside root
+    // to point outside it and pass the is_within_root() prefix check.
+    const auto resolved = fs::canonical(root / relative, ec);
     if (ec || !is_within_root(root, resolved))
-        return std::nullopt;
-
-    if (!fs::is_regular_file(resolved, ec) || ec)
         return std::nullopt;
 
     return resolved;
@@ -155,12 +159,14 @@ http::response serve_file(const fs::path& root,
     if (!resolved)
         return http::response::text(404, "Not Found", "not found\n");
 
+    // One directory_entry stat covers both the type check and the size query.
     std::error_code ec;
-    const auto file_size = fs::file_size(*resolved, ec);
-    if (ec)
+    const fs::directory_entry entry(*resolved, ec);
+    if (ec || !entry.is_regular_file())
         return http::response::text(404, "Not Found", "not found\n");
 
-    if (file_size > max_served_file_size)
+    const auto file_size = entry.file_size();
+    if (file_size > garcon::config::max_file_bytes)
         return http::response::text(413,
                                     "Payload Too Large",
                                     "file too large\n");
@@ -185,8 +191,12 @@ http::response serve_file(const fs::path& root,
 } // namespace
 
 static_files::static_files(fs::path root)
-    : _root(canonicalize_path(std::move(root)))
+    : _root(canonicalize_path(root))
 {
+    if (_root.empty() || !fs::is_directory(_root))
+        throw std::invalid_argument(
+            "static_files: invalid or non-existent root directory: " +
+            root.string());
 }
 
 http::response static_files::handle(const http::request& req) const

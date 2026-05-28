@@ -22,7 +22,7 @@ class stream final : public net::stream
 public:
     stream(const context& tls_context, net::socket socket);
 
-    bool valid() const override;
+    bool is_valid() const override;
     void close() override;
 
     bool set_receive_timeout(std::chrono::milliseconds timeout) override;

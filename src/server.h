@@ -13,6 +13,7 @@
 #include "app/runtime_events.h"
 #include "app/stream_factory.h"
 #include "app/work_queue.h"
+#include "config.h"
 #include "net/listener.h"
 #include "server_config.h"
 
@@ -35,7 +36,7 @@ public:
     void run();
 
 private:
-    static constexpr auto io_timeout = std::chrono::seconds(5);
+    static constexpr auto io_timeout = garcon::config::socket_io_timeout;
 
     server_config _config;
     net::listener _listener;

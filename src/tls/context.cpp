@@ -7,27 +7,15 @@
 // Copyright 2025 Tomaz Stih. All rights reserved.
 // MIT License.
 #include "tls/context.h"
+#include "tls/tls_error.h"
 
 #include <stdexcept>
-#include <string>
-#include <string_view>
 
 #include <openssl/err.h>
 
 namespace tls {
 
 namespace {
-
-std::string ssl_error_message(std::string_view prefix)
-{
-    const auto code = ::ERR_get_error();
-    if (code == 0)
-        return std::string(prefix);
-
-    char buf[256];
-    ::ERR_error_string_n(code, buf, sizeof(buf));
-    return std::string(prefix) + ": " + buf;
-}
 
 void configure_context(SSL_CTX* ctx)
 {

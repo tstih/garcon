@@ -9,6 +9,7 @@
 // MIT License.
 #pragma once
 
+#include "config.h"
 #include "http/buffer.h"
 #include "net/stream.h"
 
@@ -44,6 +45,6 @@ struct header_read_result
 // destroyed.
 header_read_result read_header_block(net::stream& s,
                                      buffer& b,
-                                     std::size_t max_bytes = 64 * 1024);
+                                     std::size_t max_bytes = garcon::config::max_request_header_bytes);
 
 } // namespace http
