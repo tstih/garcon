@@ -33,7 +33,7 @@ public:
     ~worker_pool();
 
     void request_stop();
-    std::size_t size() const;
+    [[nodiscard]] std::size_t size() const noexcept;
 
 private:
     void start_workers(std::size_t worker_count);

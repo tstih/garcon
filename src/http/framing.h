@@ -14,28 +14,17 @@
 #include "net/stream.h"
 
 #include <cstddef>
+#include <expected>
 #include <string_view>
 
 namespace http {
 
-enum class header_read_status
+enum class header_read_error
 {
-    ok,
     closed,
     timeout,
     too_large,
-    error,
-};
-
-struct header_read_result
-{
-    header_read_status status = header_read_status::error;
-    std::string_view header;
-
-    explicit operator bool() const
-    {
-        return status == header_read_status::ok;
-    }
+    io_error,
 };
 
 // Reads from the stream until the end of the HTTP header block is available
@@ -43,8 +32,9 @@ struct header_read_result
 // the header block within the buffer (including the terminating "\r\n\r\n").
 // The returned view remains valid as long as the buffer is not resized or
 // destroyed.
-header_read_result read_header_block(net::stream& s,
-                                     buffer& b,
-                                     std::size_t max_bytes = garcon::config::max_request_header_bytes);
+[[nodiscard]] std::expected<std::string_view, header_read_error> read_header_block(
+    net::stream& s,
+    buffer& b,
+    std::size_t max_bytes = garcon::config::max_request_header_bytes);
 
 } // namespace http

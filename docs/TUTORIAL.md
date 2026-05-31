@@ -38,6 +38,12 @@ The main executable is written to `bin/garcon`.
 The default shared modules are written to `bin/modules/`, and the default
 module configuration is copied to `bin/modules.d/`.
 
+You can also check the configured build version directly:
+
+~~~sh
+./bin/garcon --version
+~~~
+
 ## 3. Prepare content and understand the default modules
 
 Garçon serves files from a `www/` directory.
@@ -78,6 +84,7 @@ By default that means:
 - CORS allows `http://localhost:3000` and `http://127.0.0.1:3000` for `/api/*`
 - `/api/*` requires `X-Garcon-API-Key: dev-key`
 - everything else eventually falls back to static files
+- HTTP/1.1 connections stay alive unless the client asks to close them
 
 ## 4. Run HTTP locally
 
@@ -133,6 +140,7 @@ Defaults:
 - worker count: `std::thread::hardware_concurrency()`
 - fallback worker count: `4`
 - queue capacity: `worker_threads * 64`
+- per-IP accepted concurrent connections: `8`
 
 Example:
 
@@ -141,8 +149,10 @@ Example:
 ~~~
 
 The startup log reports the effective worker count and queue capacity.
-`v0.0.5` also reports queue-full rejection and connection-stage diagnostics to
-stderr when those events occur.
+Garçon also applies a coarse per-IP admission cap before sockets reach the
+worker pool. `v0.0.5` and later report queue-full rejection, per-IP
+rejection, and connection-stage diagnostics to stderr when those events occur.
+Handled requests are written to stdout as access-log lines.
 
 ## 6. Expose HTTP on another interface
 
@@ -190,6 +200,8 @@ For a different port, bind address, or concurrency profile:
 ~~~
 
 If only one TLS file is provided, startup fails intentionally.
+HTTPS responses also include `Strict-Transport-Security: max-age=31536000`
+automatically.
 
 ## 9. Build a Debian package
 
@@ -253,7 +265,8 @@ ctest --test-dir build --output-on-failure
 ~~~
 
 This runs the CORS, host-guard, header-guard, security, HTTPS, concurrency,
-and route-table smoke suites.
+keep-alive, and route-table smoke suites plus the small `unit_http` test
+binary.
 
 If you want to write your own shared module next, continue with
 [docs/MODULE-DEVELOPMENT-TUTORIAL.md](/home/tstih/data/wischner/garcon/docs/MODULE-DEVELOPMENT-TUTORIAL.md).

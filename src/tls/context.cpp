@@ -22,6 +22,22 @@ void configure_context(SSL_CTX* ctx)
     if (::SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION) != 1)
         throw std::runtime_error(ssl_error_message("failed to set TLS minimum version"));
 
+    if (::SSL_CTX_set_cipher_list(
+            ctx,
+            "ECDHE+AESGCM:ECDHE+CHACHA20:!aNULL:!eNULL:!EXPORT") != 1) {
+        throw std::runtime_error(ssl_error_message("failed to set TLS cipher list"));
+    }
+
+#ifdef TLS1_3_VERSION
+    if (::SSL_CTX_set_ciphersuites(
+            ctx,
+            "TLS_AES_256_GCM_SHA384:"
+            "TLS_CHACHA20_POLY1305_SHA256:"
+            "TLS_AES_128_GCM_SHA256") != 1) {
+        throw std::runtime_error(ssl_error_message("failed to set TLS 1.3 cipher suites"));
+    }
+#endif
+
     long options = SSL_OP_NO_COMPRESSION;
 #ifdef SSL_OP_NO_RENEGOTIATION
     options |= SSL_OP_NO_RENEGOTIATION;

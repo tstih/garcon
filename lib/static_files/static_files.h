@@ -21,7 +21,7 @@ public:
     // Creates a static file serving service rooted at the given filesystem path.
     explicit static_files(std::filesystem::path root);
 
-    http::response handle(const http::request& req) const;
+    [[nodiscard]] http::response handle(const http::request& req) const;
 
 private:
     std::filesystem::path _root;

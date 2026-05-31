@@ -1,6 +1,10 @@
 # Top-level CMakeLists.txt
 cmake_minimum_required(VERSION 3.25)
-project(garcon VERSION 0.0.6 LANGUAGES CXX)
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" GARCON_PROJECT_VERSION)
+string(STRIP "${GARCON_PROJECT_VERSION}" GARCON_PROJECT_VERSION)
+
+project(garcon VERSION "${GARCON_PROJECT_VERSION}" LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +17,48 @@ set(BUILD_SHARED_LIBS OFF)
 # We want a debug build by default
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+endif()
+
+option(GARCON_ENABLE_ASAN "Build with AddressSanitizer" OFF)
+option(GARCON_ENABLE_UBSAN "Build with UndefinedBehaviorSanitizer" OFF)
+option(GARCON_ENABLE_TSAN "Build with ThreadSanitizer" OFF)
+
+if(GARCON_ENABLE_ASAN AND GARCON_ENABLE_TSAN)
+  message(FATAL_ERROR "ASan and TSan cannot be enabled together")
+endif()
+
+add_library(garcon_sanitizers INTERFACE)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  if(GARCON_ENABLE_ASAN)
+    target_compile_options(garcon_sanitizers INTERFACE
+      -fsanitize=address
+      -fno-omit-frame-pointer
+    )
+    target_link_options(garcon_sanitizers INTERFACE
+      -fsanitize=address
+    )
+  endif()
+
+  if(GARCON_ENABLE_UBSAN)
+    target_compile_options(garcon_sanitizers INTERFACE
+      -fsanitize=undefined
+      -fno-omit-frame-pointer
+    )
+    target_link_options(garcon_sanitizers INTERFACE
+      -fsanitize=undefined
+    )
+  endif()
+
+  if(GARCON_ENABLE_TSAN)
+    target_compile_options(garcon_sanitizers INTERFACE
+      -fsanitize=thread
+      -fno-omit-frame-pointer
+    )
+    target_link_options(garcon_sanitizers INTERFACE
+      -fsanitize=thread
+    )
+  endif()
 endif()
 
 # --- Add subdirectories ---

@@ -117,24 +117,24 @@ server_config finalize_options(const cli_options& opts, const fs::path& program_
         throw std::runtime_error("--tls-cert and --tls-key must be provided together");
     }
 
-    server_config config;
-    config.bind_address = opts.bind_address;
-    config.port = opts.port.value_or(https_requested(opts) ? 8443 : 8080);
-    config.www_root = default_www_root();
-    config.module_config_dir =
-        opts.module_config_dir.value_or(default_module_config_dir(program_path));
-    config.worker_threads = opts.worker_threads.value_or(default_worker_threads());
-    config.connection_queue_capacity =
-        opts.connection_queue_capacity.value_or(default_queue_capacity(config.worker_threads));
+    const auto worker_threads = opts.worker_threads.value_or(default_worker_threads());
 
-    if (opts.tls_certificate_file) {
-        config.tls = tls_config{
-            .certificate_file = *opts.tls_certificate_file,
-            .private_key_file = *opts.tls_private_key_file,
-        };
-    }
-
-    return config;
+    return server_config{
+        .bind_address = opts.bind_address,
+        .port = opts.port.value_or(https_requested(opts) ? 8443 : 8080),
+        .www_root = default_www_root(),
+        .module_config_dir =
+            opts.module_config_dir.value_or(default_module_config_dir(program_path)),
+        .worker_threads = worker_threads,
+        .connection_queue_capacity =
+            opts.connection_queue_capacity.value_or(default_queue_capacity(worker_threads)),
+        .tls = opts.tls_certificate_file
+            ? std::optional<tls_config>{tls_config{
+                  .certificate_file = *opts.tls_certificate_file,
+                  .private_key_file = *opts.tls_private_key_file,
+              }}
+            : std::nullopt,
+    };
 }
 
 std::string require_value(int argc,
@@ -221,6 +221,8 @@ command_line_result command_line_parser::parse() const
 
         if (arg == "--help")
             return command_line_result{.show_help = true};
+        if (arg == "--version")
+            return command_line_result{.show_version = true};
 
         if (!arg.empty() && arg.front() == '-') {
             parse_named_option(arg, out, _argc, _argv, i);
@@ -249,7 +251,8 @@ std::string command_line_parser::usage() const
            " [port] [--bind ADDRESS] [--port PORT]"
            " [--modules-dir DIR]"
            " [--workers N] [--queue-capacity N]"
-           " [--tls-cert PATH --tls-key PATH]\n";
+           " [--tls-cert PATH --tls-key PATH]"
+           " [--help] [--version]\n";
 }
 
 } // namespace app

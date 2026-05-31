@@ -24,20 +24,27 @@ struct tls_config
 
 struct server_config
 {
+    // IPv4 address to bind the listening socket to.
     std::string bind_address = "127.0.0.1";
+    // TCP port exposed by the listener.
     int port = 8080;
+    // Default document root used by the static-files module.
     std::filesystem::path www_root = "www";
+    // Directory containing the ordered module configuration files.
     std::filesystem::path module_config_dir = "modules.d";
+    // Fixed worker-pool size used for concurrent connection handling.
     std::size_t worker_threads = 4;
+    // Maximum number of accepted sockets buffered ahead of workers.
     std::size_t connection_queue_capacity = 256;
+    // Optional TLS material; when present Garcon serves HTTPS.
     std::optional<tls_config> tls;
 
-    bool https_enabled() const
+    [[nodiscard]] bool https_enabled() const noexcept
     {
         return tls.has_value();
     }
 
-    std::string_view scheme() const
+    [[nodiscard]] std::string_view scheme() const noexcept
     {
         return https_enabled() ? "https" : "http";
     }

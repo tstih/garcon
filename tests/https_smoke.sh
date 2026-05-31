@@ -121,6 +121,16 @@ test_https_content_matches_http_root() {
     assert_eq "$actual" "$expected" "HTTPS response body did not match the static index file"
 }
 
+test_https_adds_hsts() {
+    local port=$1
+    local headers
+
+    headers=$(curl -k -sS -D - -o /dev/null "https://127.0.0.1:$port/")
+    assert_contains "$(tr -d '\r' <<<"$headers")" \
+        "Strict-Transport-Security: max-age=31536000" \
+        "HTTPS responses should advertise HSTS"
+}
+
 test_https_symlink_escape_is_rejected() {
     local port=$1
     local status
@@ -239,6 +249,7 @@ test_missing_tls_key_fails "$next_port"
 start_https_server "$next_port"
 test_https_startup_log "$next_port"
 test_https_content_matches_http_root "$next_port"
+test_https_adds_hsts "$next_port"
 test_https_symlink_escape_is_rejected "$next_port"
 test_https_oversized_file_is_rejected "$next_port"
 test_plain_http_is_rejected_on_https_port "$next_port"

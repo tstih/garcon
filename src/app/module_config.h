@@ -7,6 +7,7 @@
 // MIT License.
 #pragma once
 
+#include <expected>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -20,7 +21,7 @@ struct configured_module
     std::string config_text;
 };
 
-std::vector<configured_module> load_configured_modules(
+[[nodiscard]] std::expected<std::vector<configured_module>, std::string> load_configured_modules(
     const std::filesystem::path& directory);
 
 } // namespace app

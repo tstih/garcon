@@ -2,6 +2,8 @@
 
 ## [v0.0.8] - Unreleased
 ### Added
+- Added HTTP keep-alive support with explicit HTTP/1.0 and HTTP/1.1
+  connection policy handling.
 - Added parsed request headers to `http::request` and exposed them to shared
   modules through the ABI and C++ wrapper layer.
 - Added arbitrary response headers to `http::response` and exposed them to
@@ -12,6 +14,38 @@
   decorate downstream API responses.
 - Added a low-overhead `header-guard` shared module to protect `/api/*`
   routes with header checks.
+- Added per-request access logging to stdout through the new `access_log`
+  seam.
+- Added coarse per-IP accepted-connection limiting ahead of the bounded work
+  queue.
+- Added automatic HSTS injection for HTTPS responses.
+- Added explicit TLS cipher-suite selection instead of relying on OpenSSL
+  defaults.
+- Added a repository `VERSION` file and `--version` CLI output.
+- Added isolated `unit_http` coverage for request parsing, framing, buffers,
+  and response-header validation.
+- Added focused keep-alive smoke coverage.
+
+### Refactored
+- Extracted per-connection request servicing into `app::connection_handler`.
+- Moved the reusable `static_files` service fully under `lib/static_files/`
+  and linked the shared module against that library target.
+- Switched runtime diagnostics and access-log string assembly to `std::format`
+  where the current toolchain supports it cleanly.
+- Replaced several status-code-plus-payload APIs with `std::expected`,
+  including request parsing, header framing, listener accept, and module-config
+  loading.
+- Replaced the in-process pipeline `module_result` enum/optional pairing with a
+  variant-backed representation.
+- Replaced source globs in `src/CMakeLists.txt` with explicit source lists.
+
+### Security
+- Validated response headers before serialization so CR/LF injection attempts
+  are rejected or dropped.
+- Added graceful write-side socket shutdown before close.
+
+### Build
+- Added opt-in AddressSanitizer, UBSan, and ThreadSanitizer build options.
 
 ### Verified
 - Added focused smoke coverage for guarded host allowlisting through the new
@@ -20,10 +54,14 @@
   response-header propagation through the new `cors` module.
 - Added focused smoke coverage for guarded API access through the new
   header-guard module.
+- Added focused smoke coverage for connection reuse and explicit close
+  behavior.
+- Added focused smoke coverage for per-IP connection admission limiting.
+- Extended HTTPS smoke coverage to verify HSTS.
 
 ### Documented
 - Refreshed the main README, architecture guide, tutorial, and
-  module-development tutorial for the gateway-oriented shared-module runtime.
+  module-development tutorial for the keep-alive-capable gateway runtime.
 
 ## [v0.0.7] - Unreleased
 ### Added

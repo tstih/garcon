@@ -14,11 +14,18 @@
 #include <optional>
 #include <algorithm>
 #include <cstddef>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace http {
+
+enum class connection_policy
+{
+    close,
+    keep_alive,
+};
 
 struct response
 {
@@ -29,7 +36,7 @@ struct response
     std::string body;
     std::optional<std::size_t> content_length;
 
-    const header_field* find_header(std::string_view name) const
+    [[nodiscard]] const header_field* find_header(std::string_view name) const noexcept
     {
         const auto it = std::find_if(headers.begin(),
                                      headers.end(),
@@ -42,6 +49,7 @@ struct response
 
     void add_header(std::string_view name, std::string_view value)
     {
+        validate_header(name, value);
         headers.push_back(header_field{
             .name = std::string(name),
             .value = std::string(value),
@@ -50,6 +58,7 @@ struct response
 
     void set_header(std::string_view name, std::string_view value)
     {
+        validate_header(name, value);
         auto it = std::find_if(headers.begin(),
                                headers.end(),
                                [name](const header_field& header) {
@@ -65,12 +74,25 @@ struct response
     }
 
     // Serializes the response into an HTTP/1.1 response message.
-    std::string serialize() const;
+    [[nodiscard]] std::string serialize(
+        connection_policy policy = connection_policy::close) const;
 
     // Constructs a plain-text response with the given status and message.
-    static response text(int status,
-                         std::string_view reason,
-                         std::string_view msg);
+    [[nodiscard]] static response text(int status,
+                                       std::string_view reason,
+                                       std::string_view msg);
+
+    [[nodiscard]] static bool valid_header_name(std::string_view name) noexcept;
+    [[nodiscard]] static bool valid_header_value(std::string_view value) noexcept;
+
+private:
+    static void validate_header(std::string_view name, std::string_view value)
+    {
+        if (!valid_header_name(name))
+            throw std::invalid_argument("invalid response header name");
+        if (!valid_header_value(value))
+            throw std::invalid_argument("invalid response header value");
+    }
 };
 
 } // namespace http

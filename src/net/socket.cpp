@@ -11,6 +11,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
+#include <utility>
 
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -43,11 +44,17 @@ io_status status_from_errno(int error)
 
 } // namespace
 
-socket::socket() : _fd(-1) {}
+socket::socket() noexcept : _fd(-1) {}
 
-socket::socket(int fd) : _fd(fd) {}
+socket::socket(int fd, std::string peer_address)
+    : _fd(fd),
+      _peer_address(std::move(peer_address))
+{
+}
 
-socket::socket(socket&& o) noexcept : _fd(o._fd)
+socket::socket(socket&& o) noexcept
+    : _fd(o._fd),
+      _peer_address(std::move(o._peer_address))
 {
     o._fd = -1;
 }
@@ -57,6 +64,7 @@ socket& socket::operator=(socket&& o) noexcept
     if (this != &o) {
         close();
         _fd = o._fd;
+        _peer_address = std::move(o._peer_address);
         o._fd = -1;
     }
     return *this;
@@ -67,19 +75,25 @@ socket::~socket()
     close();
 }
 
-bool socket::is_valid() const
+bool socket::is_valid() const noexcept
 {
     return _fd >= 0;
 }
 
-int socket::fd() const
+int socket::fd() const noexcept
 {
     return _fd;
+}
+
+std::string_view socket::peer_address() const noexcept
+{
+    return _peer_address;
 }
 
 void socket::close()
 {
     if (_fd >= 0) {
+        ::shutdown(_fd, SHUT_WR);
         ::close(_fd);
         _fd = -1;
     }

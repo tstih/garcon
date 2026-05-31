@@ -26,12 +26,15 @@ well-structured, comprehensible foundation for modern C++ backend development.
 **v0.0.8**
 
 - Concurrent HTTP/1.1 server with direct HTTPS support
+- HTTP keep-alive for reusable HTTP/1.0 and HTTP/1.1 connections
 - Serves static files from a configurable `www/` directory
 - Strict request-line validation and safer response handling
 - Fixed-size `std::jthread` worker pool with a bounded accepted-connection queue
 - Ordered request pipeline with `pass`, `respond`, `upgrade`, and `error` outcomes
 - Request headers parsed into `http::request` and exposed to shared modules
 - Arbitrary response headers supported in `http::response` and exposed to shared modules
+- Dedicated `connection_handler` runtime for per-connection lifecycle ownership
+- Coarse per-IP concurrent connection admission limiting in the host runtime
 - Public module ABI under `include/garcon/`
 - Simple C++ module authoring layer in `include/garcon/module_cpp.h`
 - Shared-module loading from a configured `modules.d/` directory
@@ -40,6 +43,9 @@ well-structured, comprehensible foundation for modern C++ backend development.
 - Low-overhead `cors` gateway module under `lib/cors/`
 - Low-overhead `header-guard` gateway module under `lib/header_guard/`
 - Static files served by the shared `static-files` module under `lib/static_files/`
+- Reusable static-file service moved under `lib/static_files/`
+- TLS mode uses explicit modern cipher policy and adds HSTS automatically
+- Per-request access logs written to stdout and source-located diagnostics to stderr
 - Request-handler and stream-factory seams for cleaner extensibility
 - Explicit accept-error classification and runtime diagnostics
 - Clean modular structure (`net`, `http`, `tls`, `app`)
@@ -56,7 +62,8 @@ gateway-friendly:
 - each module can `pass`, `respond`, request a future `upgrade`, or signal `error`
 - parsed request headers are now exposed to shared modules
 - arbitrary response headers can now be produced and propagated across the pipeline
-- the host server now focuses on transport, TLS, request parsing, and orchestration
+- HTTP keep-alive, HSTS, and access logging now live in the host runtime
+- the host server now focuses on transport, TLS, request parsing, connection reuse, and orchestration
 - module authors can implement normal C++ classes behind the ABI with `module_cpp.h`
 - the default development chain is `host-guard`, then `route-table`, then `cors`, then `header-guard`, then `static-files`
 - the `v0.0.2` through `v0.0.7` security and concurrency guarantees stay intact
@@ -114,6 +121,12 @@ The resulting binary is placed in `bin/`. Shared modules are written to
 `bin/modules/`, and the default module configuration is copied to
 `bin/modules.d/`.
 
+To print the build version sourced from the repository `VERSION` file:
+
+~~~sh
+./bin/garcon --version
+~~~
+
 ## Run
 
 By default Garçon binds only to `127.0.0.1`.
@@ -132,6 +145,9 @@ You can tune both at runtime:
 ~~~sh
 ./bin/garcon --workers 4 --queue-capacity 256
 ~~~
+
+Garçon also enforces a coarse per-IP cap on accepted concurrent connections so
+one client cannot monopolize the worker pool and accepted-connection queue.
 
 To run HTTPS locally with a certificate and key, provide both files
 explicitly. HTTPS defaults to port `8443` unless `--port` is set:
@@ -170,6 +186,10 @@ The `header-guard` module then requires:
 Preflight `OPTIONS` requests for those origins are handled by the `cors`
 module before static files act as the fallback handler.
 
+HTTP/1.1 connections stay alive by default unless the client asks to close
+them. In HTTPS mode, Garçon also adds
+`Strict-Transport-Security: max-age=31536000` automatically.
+
 
 To listen on a different interface, make the choice explicit for either HTTP
 or HTTPS:
@@ -202,6 +222,10 @@ module configuration in `bin/modules.d/`. The installed Debian package does
 not yet populate an installed module directory or `/etc/garcon/modules.d`, so
 the current package should still be treated as a base server package rather
 than the final pluggable-runtime layout.
+
+Every handled request also emits one access-log line to stdout. Runtime
+diagnostics, including connection-stage failures and queue-full rejections,
+continue to go to stderr.
 
 ## License
 

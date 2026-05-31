@@ -25,7 +25,7 @@ The current structure is shaped by a few deliberate constraints:
 
 Several things are intentionally not implemented yet:
 
-- HTTP keep-alive or request pipelining
+- HTTP request pipelining
 - request bodies, richer header parsing, and upstream proxying
 - WebSocket or other connection-upgrade support beyond the placeholder
   `upgrade` outcome
@@ -35,7 +35,7 @@ Several things are intentionally not implemented yet:
 ## System overview
 
 At a high level, Garçon runs one accept loop, hands accepted sockets to a
-bounded queue, and lets a fixed worker pool drive a single-request serving
+bounded queue, and lets a fixed worker pool drive a keep-alive-aware request
 pipeline.
 
 The major layers are:
@@ -48,7 +48,7 @@ The major layers are:
 6. HTTP framing and message types
 7. application pipeline and modules
 8. reusable static-file service
-9. runtime diagnostics
+9. diagnostics and access logging
 
 The key design choice is that concurrency stops at the socket-dispatch
 boundary. Once a worker receives a client socket, the rest of the flow is the
@@ -114,6 +114,9 @@ coordinates:
 - the root request handler
 - the transport-selection policy
 - the runtime diagnostics sink
+- the access-log sink
+- the per-connection handler
+- the per-IP admission limiter
 - the bounded work queue
 - the fixed worker pool
 
@@ -130,6 +133,23 @@ The runtime loop is split in two parts:
 This keeps the concurrency policy isolated from HTTP parsing and file-serving
 logic.
 
+### Connection handler
+
+`src/app/connection_handler.*` owns the lifecycle of one accepted connection.
+It is responsible for:
+
+- stream creation through `stream_factory`
+- applying receive and send timeouts
+- running the TLS handshake when needed
+- looping over keep-alive requests on the same connection
+- dispatching parsed requests through the root handler
+- injecting HTTPS-only response policy such as HSTS
+- writing the final response
+- emitting one access-log record per handled request
+
+This split keeps `server.cpp` focused on accept-loop orchestration while
+connection-specific policy stays in one cohesive class.
+
 ## 3. Concurrency model
 
 Garçon uses a classic producer/consumer design.
@@ -145,6 +165,9 @@ The accept loop owns one listening socket and repeatedly calls
 
 Retryable accept failures are logged and followed by a short backoff delay.
 Fatal accept failures are surfaced as exceptions and terminate the loop.
+Before a successfully accepted socket is handed to the work queue, the accept
+side also applies a coarse per-IP concurrent-connection cap. This prevents one
+client IP from filling the whole queue and worker pool by itself.
 
 ### Queue
 
@@ -185,12 +208,14 @@ TLS, or file serving.
 
 The queue is intentionally bounded. When it is full, Garçon drops newly
 accepted connections rather than letting memory usage grow without limit.
-Current runtime diagnostics make those rejections visible.
+Current runtime diagnostics make both queue-full and per-IP admission
+rejections visible.
 
 This is a conservative policy with three benefits:
 
 - resource use remains predictable
 - slow clients cannot create unbounded backlog growth
+- one noisy client cannot monopolize the whole runtime alone
 - the HTTP and TLS layers stay simple because they do not manage admission
   control themselves
 
@@ -205,8 +230,10 @@ handling from the rest of the program.
 responsible for:
 
 - owning and closing the descriptor exactly once
+- tracking the accepted peer address for access logging
 - applying send and receive timeouts
 - sending and receiving raw bytes
+- performing a graceful write-side shutdown before close
 - translating low-level failures into transport-neutral status values
 
 Because sockets move by value through the queue and worker pool, ownership
@@ -222,9 +249,9 @@ stays explicit all the way from `accept()` to connection handling.
 - `listen()`
 - `accept()`
 
-Instead of returning raw sentinel values, `accept()` returns `accept_result`,
-which keeps the accept loop explicit about successful connections, retryable
-errors, and fatal errors.
+Instead of returning raw sentinel values, `accept()` returns
+`std::expected<socket, accept_error>`, which keeps the accept loop explicit
+about successful connections, retryable errors, and fatal errors.
 
 ### `net::stream`
 
@@ -266,6 +293,10 @@ separate code path.
 This concentrates OpenSSL setup in one place rather than spreading
 configuration across the runtime.
 
+The context now also pins a conservative modern cipher policy explicitly
+instead of inheriting whatever default cipher list the host OpenSSL build
+happens to provide.
+
 ### `tls::stream`
 
 `tls::stream` adapts a connected socket to the `net::stream` interface. It:
@@ -306,13 +337,13 @@ The `http/` layer works on protocol bytes and message semantics only.
 header block ending in `"\r\n\r\n"` is available, or until an explicit limit or
 I/O condition is reached.
 
-Framing returns a typed result:
+Framing returns `std::expected<std::string_view, header_read_error>`, where
+the error side remains explicit:
 
-- `ok`
 - `closed`
 - `timeout`
 - `too_large`
-- `error`
+- `io_error`
 
 This keeps header-read outcomes explicit and lets the server choose the
 appropriate behavior, such as returning `408 Request Timeout` or `431 Request
@@ -325,13 +356,15 @@ The current maximum request-header size is configured in `src/config.h`.
 `http::request` currently models the minimal parsed request required by the
 server:
 
+- HTTP version
 - method
 - target
 - header fields
 
 The parser accepts only origin-form targets and HTTP/1.0 or HTTP/1.1. It also
 parses header fields into a small owning collection with case-insensitive
-lookup helpers. Request bodies are still left for future work.
+lookup helpers, and exposes the current connection-reuse policy through
+`keep_alive_requested()`. Request bodies are still left for future work.
 
 ### Response building
 
@@ -345,7 +378,9 @@ lookup helpers. Request bodies are still left for future work.
 - response body
 
 It serializes itself into a wire-format HTTP/1.1 response so the server runtime
-does not have to build raw response strings by hand.
+does not have to build raw response strings by hand. Serialization also applies
+the chosen connection policy and drops invalid custom headers so response
+splitting cannot be introduced by module output.
 
 ## 7. Application layer and request pipeline
 
@@ -360,7 +395,7 @@ on this abstraction rather than on a specific static-file or routing class.
 
 `request_pipeline` is the current root handler implementation. It stores an
 ordered list of modules and calls them in sequence. Each module returns a
-`module_result` with one of four outcomes:
+`module_result` variant with one of four alternatives:
 
 - `pass`
 - `respond`
@@ -394,6 +429,7 @@ directory:
 - each file must contain a `path=` entry naming the shared library
 - relative `path=` values are resolved relative to the config file
 - the full config text is passed to the module constructor
+- the resolved shared-library path is written to startup output during loading
 
 The C ABI stays intentionally small for loader stability. Module authors are
 expected to implement normal C++ classes through the helper layer in
@@ -425,8 +461,8 @@ abstraction and loader, while the actual request behavior lives outside
 
 ## 8. Static-file service
 
-`app::static_files` is a reusable file-serving service rather than a hard-coded
-branch in the server runtime.
+`app::static_files` is a reusable file-serving service under `lib/static_files/`
+rather than a hard-coded branch in the server runtime.
 
 Its responsibilities include:
 
@@ -453,7 +489,7 @@ Important current behavior:
 This logic is what carries most of the server's current security posture for
 static content.
 
-## 9. Runtime diagnostics and failure policy
+## 9. Runtime diagnostics and access logging
 
 `src/app/runtime_events.*` is the small diagnostics seam used by the runtime.
 The default implementation logs to stderr, but the server depends only on the
@@ -466,8 +502,26 @@ The seam currently reports:
 - per-connection stage failures
 - unexpected worker callback failures
 
-This keeps failures visible without forcing the concurrency or transport layers
-to depend directly on a concrete logger.
+Diagnostic entries also capture source file and line information through
+`std::source_location`, which is especially useful when module loading or
+connection handling fails during development.
+
+`src/app/access_log.*` is the parallel per-request observability seam. The
+default implementation writes one Combined-Log-style line to stdout for each
+handled request, including:
+
+- timestamp
+- client IP
+- method
+- target
+- HTTP version
+- response status
+- serialized response size
+- elapsed microseconds
+
+Together these seams keep failures and request traffic visible without forcing
+the concurrency or transport layers to depend directly on concrete logging
+code.
 
 The failure policy is intentionally local where possible:
 
@@ -483,15 +537,15 @@ The failure policy is intentionally local where possible:
 For a successful HTTP or HTTPS request, the runtime flow is:
 
 1. `main.cpp` parses CLI arguments and builds `server_config`.
-2. `app::server` constructs the listener, pipeline, stream factory, and
-   diagnostics sink.
+2. `app::server` constructs the listener, pipeline, stream factory,
+   diagnostics sink, access log, and `connection_handler`.
 3. The accept loop receives a client socket from `net::listener`.
 4. The socket is pushed into `work_queue` if capacity is available.
 5. A worker thread pops that socket.
-6. `default_stream_factory` wraps it as `plain_stream` or `tls::stream`.
+6. `connection_handler` creates a `plain_stream` or `tls::stream`.
 7. The stream receives read and write timeouts.
 8. The TLS handshake runs when HTTPS is enabled.
-9. `http::framing` reads the header block.
+9. `http::framing` reads one request header block.
 10. `http::request::parse()` validates the request line and header fields.
 11. `request_pipeline` calls modules in order.
 12. The configured `host-guard` module may reject or pass based on `Host`.
@@ -500,7 +554,12 @@ For a successful HTTP or HTTPS request, the runtime flow is:
     response headers for later responses.
 15. The configured `header-guard` module may reject or pass `/api/*` requests.
 16. The configured `static-files` module delegates to `static_files`.
-17. `http::response` serializes the final result through the stream.
+17. `connection_handler` adds HSTS when HTTPS is enabled.
+18. `http::response` serializes the final result with either `keep-alive` or
+    `close`.
+19. `access_log` records the handled request.
+20. If the request keeps the connection alive, the handler loops back to step
+    9 on the same stream.
 
 The crucial point is that steps 9 through 17 are the same regardless of
 transport.
@@ -513,6 +572,8 @@ transport.
 - maximum request-header bytes: `64 KiB`
 - retry delay after transient `accept()` failure: `50 ms`
 - per-connection send/receive timeout: `5 s`
+- keep-alive idle timeout: `15 s`
+- per-IP accepted concurrent connections: `8`
 
 These values are intentionally small and explicit. They keep safety-related
 limits visible instead of scattering raw literals across the codebase.
@@ -539,11 +600,14 @@ loop, TLS integration, or file-serving service.
 
 ## 13. Verification and operational confidence
 
-The current architecture is backed by seven smoke suites:
+The current architecture is backed by one small unit-test binary and eight
+smoke suites:
 
+- `tests/unit_http.cpp`
 - `tests/cors_smoke.sh`
 - `tests/host_guard_smoke.sh`
 - `tests/header_guard_smoke.sh`
+- `tests/keep_alive_smoke.sh`
 - `tests/security_smoke.sh`
 - `tests/https_smoke.sh`
 - `tests/concurrency_smoke.sh`
@@ -553,15 +617,19 @@ Together they exercise:
 
 - safer bind defaults
 - malformed-request handling
+- HTTP parser, buffer, framing, and response-header validation in isolation
 - static-file containment checks
 - bounded file serving
 - guarded host allowlisting
 - request-header parsing and guarded API access
+- HTTP keep-alive and explicit connection-close behavior
 - response-header propagation and CORS behavior
+- HTTPS HSTS injection
 - lexical module ordering and gateway-style route handling
 - TLS startup and handshake behavior
 - progress with stalled HTTP or TLS clients
 - queue-full overload behavior
+- per-IP admission limiting
 - continued service after local connection failures
 
 These tests are intentionally black-box oriented. They verify that the layers
@@ -580,9 +648,11 @@ The current structure was not introduced all at once:
 - `v0.0.7` introduced a public module ABI, `modules.d/` configuration, a
   small C++ module SDK, and the first shared `static-files` and `route-table`
   modules
-- `v0.0.8` added parsed request headers, arbitrary response headers, and the
-  default shared `host-guard`, `route-table`, `cors`, `header-guard`, and
-  `static-files` module chain
+- `v0.0.8` added parsed request headers, arbitrary response headers,
+  keep-alive connection reuse, a dedicated `connection_handler`, explicit
+  access logging, per-IP admission limiting, stricter TLS defaults, the default shared `host-guard`,
+  `route-table`, `cors`, `header-guard`, and `static-files` module chain, and
+  the first isolated HTTP unit tests
 
 That incremental history explains why the codebase remains small: each release
 added one architectural seam at a time instead of replacing the whole runtime.

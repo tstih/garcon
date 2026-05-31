@@ -20,43 +20,28 @@ static std::size_t find_header_end(std::string_view v)
     return p + 4;
 }
 
-header_read_result read_header_block(net::stream& s,
-                                     buffer& b,
-                                     std::size_t max_bytes)
+std::expected<std::string_view, header_read_error> read_header_block(
+    net::stream& s,
+    buffer& b,
+    std::size_t max_bytes)
 {
     for (;;) {
         const auto view = b.as_string_view();
         const auto end = find_header_end(view);
         if (end != std::string_view::npos)
-            return header_read_result{
-                .status = header_read_status::ok,
-                .header = view.substr(0, end),
-            };
+            return view.substr(0, end);
 
         if (view.size() >= max_bytes)
-            return header_read_result{
-                .status = header_read_status::too_large,
-            };
+            return std::unexpected(header_read_error::too_large);
 
         auto out = b.write_span();
         const auto rc = s.recv_some(out);
-        if (rc.status == net::io_status::closed) {
-            return header_read_result{
-                .status = header_read_status::closed,
-            };
-        }
-
-        if (rc.status == net::io_status::timeout) {
-            return header_read_result{
-                .status = header_read_status::timeout,
-            };
-        }
-
-        if (rc.status == net::io_status::error) {
-            return header_read_result{
-                .status = header_read_status::error,
-            };
-        }
+        if (rc.status == net::io_status::closed)
+            return std::unexpected(header_read_error::closed);
+        if (rc.status == net::io_status::timeout)
+            return std::unexpected(header_read_error::timeout);
+        if (rc.status == net::io_status::error)
+            return std::unexpected(header_read_error::io_error);
 
         b.commit(rc.bytes_read);
     }

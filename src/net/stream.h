@@ -34,10 +34,10 @@ public:
     // server-side handshake here.
     virtual io_status handshake() = 0;
 
-    virtual read_result recv_some(std::span<std::byte> out) = 0;
-    virtual io_status send_all(std::span<const std::byte> data) = 0;
+    [[nodiscard]] virtual read_result recv_some(std::span<std::byte> out) = 0;
+    [[nodiscard]] virtual io_status send_all(std::span<const std::byte> data) = 0;
 
-    io_status send_all(std::string_view s)
+    [[nodiscard]] io_status send_all(std::string_view s)
     {
         const auto* p = reinterpret_cast<const std::byte*>(s.data());
         return send_all(std::span<const std::byte>(p, s.size()));

@@ -127,9 +127,6 @@ bool is_within_root(const fs::path& root, const fs::path& candidate)
     return root_it == root.end();
 }
 
-// Resolves a relative path under root, confirming it stays within root.
-// Returns nullopt if the path escapes root or canonical resolution fails.
-// Does NOT check whether the resolved path is a regular file — callers do that.
 std::optional<fs::path> resolve_under_root(const fs::path& root,
                                            const fs::path& relative)
 {
@@ -137,9 +134,6 @@ std::optional<fs::path> resolve_under_root(const fs::path& root,
         return std::nullopt;
 
     std::error_code ec;
-    // canonical() fully resolves all symlinks — weakly_canonical() would leave
-    // symlink components unresolved, potentially allowing a symlink inside root
-    // to point outside it and pass the is_within_root() prefix check.
     const auto resolved = fs::canonical(root / relative, ec);
     if (ec || !is_within_root(root, resolved))
         return std::nullopt;
@@ -159,7 +153,6 @@ http::response serve_file(const fs::path& root,
     if (!resolved)
         return http::response::text(404, "Not Found", "not found\n");
 
-    // One directory_entry stat covers both the type check and the size query.
     std::error_code ec;
     const fs::directory_entry entry(*resolved, ec);
     if (ec || !entry.is_regular_file())

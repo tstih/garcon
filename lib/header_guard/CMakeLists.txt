@@ -11,6 +11,10 @@ target_include_directories(garcon_header_guard_module PRIVATE
     "${CMAKE_SOURCE_DIR}/src"
 )
 
+target_link_libraries(garcon_header_guard_module PRIVATE
+    garcon_sanitizers
+)
+
 set_target_properties(garcon_header_guard_module PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/modules"
 )

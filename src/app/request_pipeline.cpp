@@ -7,8 +7,10 @@
 // MIT License.
 #include "app/request_pipeline.h"
 
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -45,32 +47,41 @@ http::response request_pipeline::handle(const http::request& request) const
 
     for (const auto& module : _modules) {
         const auto result = module->handle(request);
+        const auto response = std::visit(
+            [&](const auto& result_value) -> std::optional<http::response> {
+                using result_type = std::remove_cvref_t<decltype(result_value)>;
 
-        pending_headers.insert(pending_headers.end(),
-                               result.response_headers.begin(),
-                               result.response_headers.end());
+                if constexpr (std::is_same_v<result_type, pass_result>) {
+                    pending_headers.insert(pending_headers.end(),
+                                           result_value.response_headers.begin(),
+                                           result_value.response_headers.end());
+                    return std::nullopt;
+                } else if constexpr (std::is_same_v<result_type, respond_result>) {
+                    return finalize_response(result_value.response, pending_headers);
+                } else if constexpr (std::is_same_v<result_type, upgrade_result>) {
+                    pending_headers.insert(pending_headers.end(),
+                                           result_value.response_headers.begin(),
+                                           result_value.response_headers.end());
+                    return finalize_response(http::response::text(
+                                                 501,
+                                                 "Not Implemented",
+                                                 "connection upgrade not implemented\n"),
+                                             pending_headers);
+                } else {
+                    pending_headers.insert(pending_headers.end(),
+                                           result_value.response_headers.begin(),
+                                           result_value.response_headers.end());
+                    return finalize_response(http::response::text(
+                                                 500,
+                                                 "Internal Server Error",
+                                                 "module error\n"),
+                                             pending_headers);
+                }
+            },
+            result.as_variant());
 
-        switch (result.outcome) {
-        case module_outcome::pass:
-            continue;
-        case module_outcome::respond:
-            if (!result.response)
-                throw std::logic_error(
-                    std::string("module '") +
-                    std::string(module->name()) +
-                    "' returned outcome::respond without a response");
-            return finalize_response(*result.response, pending_headers);
-        case module_outcome::upgrade:
-            return finalize_response(http::response::text(501,
-                                                          "Not Implemented",
-                                                          "connection upgrade not implemented\n"),
-                                     pending_headers);
-        case module_outcome::error:
-            return finalize_response(http::response::text(500,
-                                                          "Internal Server Error",
-                                                          "module error\n"),
-                                     pending_headers);
-        }
+        if (response)
+            return *response;
     }
 
     return finalize_response(http::response::text(404, "Not Found", "not found\n"),

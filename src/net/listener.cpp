@@ -11,6 +11,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -34,14 +35,21 @@ bool is_fatal_accept_error(int error)
     }
 }
 
-accept_result make_accept_error(int error)
+accept_error make_accept_error(int error)
 {
-    return accept_result{
-        .status = is_fatal_accept_error(error)
-            ? accept_status::fatal_error
-            : accept_status::retryable_error,
+    return accept_error{
         .error = std::error_code(error, std::generic_category()),
+        .fatal = is_fatal_accept_error(error),
     };
+}
+
+std::string format_client_address(const sockaddr_in& client)
+{
+    char buffer[INET_ADDRSTRLEN] = {};
+    if (!::inet_ntop(AF_INET, &client.sin_addr, buffer, sizeof(buffer)))
+        return {};
+
+    return buffer;
 }
 
 } // namespace
@@ -71,7 +79,7 @@ listener::listener(std::string bind_address, int port)
         throw std::runtime_error("listen() failed");
 }
 
-accept_result listener::accept()
+std::expected<socket, accept_error> listener::accept()
 {
     sockaddr_in client{};
     socklen_t len = sizeof(client);
@@ -83,12 +91,9 @@ accept_result listener::accept()
         if (cfd < 0 && errno == EINTR)
             continue;
         if (cfd < 0)
-            return make_accept_error(errno);
+            return std::unexpected(make_accept_error(errno));
 
-        return accept_result{
-            .status = accept_status::accepted,
-            .client = socket(cfd),
-        };
+        return socket(cfd, format_client_address(client));
     }
 }
 

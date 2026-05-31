@@ -42,7 +42,7 @@ void worker_pool::request_stop()
         worker.request_stop();
 }
 
-std::size_t worker_pool::size() const
+std::size_t worker_pool::size() const noexcept
 {
     return _workers.size();
 }

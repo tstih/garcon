@@ -79,6 +79,15 @@ http::response to_http_response(const garcon_response_view& response_view)
     return response;
 }
 
+module_result with_response_headers(module_result result,
+                                    const garcon_response_view& response_view)
+{
+    for (const auto& header : copy_headers(response_view))
+        result.add_response_header(header.name, header.value);
+
+    return result;
+}
+
 } // namespace
 
 dynamic_module::dynamic_module(std::filesystem::path library_file,
@@ -188,26 +197,16 @@ module_result dynamic_module::handle(const http::request& request) const
     }
 
     switch (result.outcome) {
-    case GARCON_MODULE_PASS: {
-        auto pass_result = module_result::pass();
-        pass_result.response_headers = copy_headers(exchange.response);
-        return pass_result;
-    }
+    case GARCON_MODULE_PASS:
+        return with_response_headers(module_result::pass(), exchange.response);
     case GARCON_MODULE_RESPOND:
         return module_result::respond(to_http_response(exchange.response));
-    case GARCON_MODULE_UPGRADE: {
-        auto upgrade_result = module_result::upgrade();
-        upgrade_result.response_headers = copy_headers(exchange.response);
-        return upgrade_result;
-    }
+    case GARCON_MODULE_UPGRADE:
+        return with_response_headers(module_result::upgrade(), exchange.response);
     case GARCON_MODULE_ERROR:
         if (exchange.response.status != 0)
             return module_result::respond(to_http_response(exchange.response));
-        {
-            auto error_result = module_result::error();
-            error_result.response_headers = copy_headers(exchange.response);
-            return error_result;
-        }
+        return with_response_headers(module_result::error(), exchange.response);
     }
 
     return module_result::error();

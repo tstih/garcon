@@ -97,12 +97,13 @@ fs::path parse_library_path(const fs::path& file, std::string_view config_text)
 
 } // namespace
 
-std::vector<configured_module> load_configured_modules(const fs::path& directory)
+std::expected<std::vector<configured_module>, std::string> load_configured_modules(
+    const fs::path& directory)
 {
     std::error_code ec;
     if (!fs::exists(directory, ec) || !fs::is_directory(directory, ec)) {
-        throw std::runtime_error("module config directory does not exist: " +
-                                 directory.string());
+        return std::unexpected("module config directory does not exist: " +
+                               directory.string());
     }
 
     std::vector<fs::path> files;
@@ -120,17 +121,21 @@ std::vector<configured_module> load_configured_modules(const fs::path& directory
     modules.reserve(files.size());
 
     for (const auto& file : files) {
-        const auto config_text = read_text_file(file);
-        modules.push_back(configured_module{
-            .library_file = parse_library_path(file, config_text),
-            .config_directory = file.parent_path(),
-            .config_text = config_text,
-        });
+        try {
+            const auto config_text = read_text_file(file);
+            modules.push_back(configured_module{
+                .library_file = parse_library_path(file, config_text),
+                .config_directory = file.parent_path(),
+                .config_text = config_text,
+            });
+        } catch (const std::exception& e) {
+            return std::unexpected(e.what());
+        }
     }
 
     if (modules.empty()) {
-        throw std::runtime_error("no module config files found in: " +
-                                 directory.string());
+        return std::unexpected("no module config files found in: " +
+                               directory.string());
     }
 
     return modules;

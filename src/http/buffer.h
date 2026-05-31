@@ -21,14 +21,14 @@ class buffer
 public:
     // Returns a writable span with at least min_free bytes available.
     // The returned span points to the free space at the end of the buffer.
-    std::span<std::byte> write_span(std::size_t min_free = 2048);
+    [[nodiscard]] std::span<std::byte> write_span(std::size_t min_free = 2048);
 
     // Commits n bytes previously written into the span returned by write_span().
     void commit(std::size_t n);
 
     // Returns the currently committed buffer contents as a string view.
     // This view is valid until the buffer is resized or destroyed.
-    std::string_view as_string_view() const;
+    [[nodiscard]] std::string_view as_string_view() const;
 
 private:
     std::vector<std::byte> _data;

@@ -11,28 +11,16 @@
 
 #include "net/socket.h"
 
+#include <expected>
 #include <string>
 #include <system_error>
 
 namespace net {
 
-enum class accept_status
+struct accept_error
 {
-    accepted,
-    retryable_error,
-    fatal_error,
-};
-
-struct accept_result
-{
-    accept_status status = accept_status::retryable_error;
-    socket client;
     std::error_code error;
-
-    explicit operator bool() const
-    {
-        return status == accept_status::accepted;
-    }
+    bool fatal = false;
 };
 
 class listener
@@ -46,7 +34,7 @@ public:
     // Accepts an incoming connection.
     // On success, returns a connected client socket. On failure, returns an
     // explicit status plus the corresponding system error code.
-    accept_result accept();
+    [[nodiscard]] std::expected<socket, accept_error> accept();
 
 private:
     std::string _bind_address;

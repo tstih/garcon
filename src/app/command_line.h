@@ -18,6 +18,7 @@ namespace app {
 struct command_line_result
 {
     bool show_help = false;
+    bool show_version = false;
     std::optional<server_config> config;
 };
 
@@ -26,9 +27,9 @@ class command_line_parser
 public:
     command_line_parser(int argc, char** argv);
 
-    command_line_result parse() const;
+    [[nodiscard]] command_line_result parse() const;
 
-    std::string usage() const;
+    [[nodiscard]] std::string usage() const;
 
 private:
     int _argc;

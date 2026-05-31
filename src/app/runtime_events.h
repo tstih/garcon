@@ -8,6 +8,7 @@
 #pragma once
 
 #include <memory>
+#include <source_location>
 #include <string_view>
 #include <system_error>
 
@@ -19,27 +20,41 @@ public:
     virtual ~runtime_events() = default;
 
     virtual void on_accept_error(const std::error_code& error,
-                                 bool fatal) = 0;
-    virtual void on_connection_rejected(std::string_view reason) = 0;
+                                 bool fatal,
+                                 std::source_location where =
+                                     std::source_location::current()) = 0;
+    virtual void on_connection_rejected(std::string_view reason,
+                                        std::source_location where =
+                                            std::source_location::current()) = 0;
     virtual void on_connection_error(std::string_view stage,
-                                     std::string_view detail) = 0;
-    virtual void on_worker_error(std::string_view detail) = 0;
+                                     std::string_view detail,
+                                     std::source_location where =
+                                         std::source_location::current()) = 0;
+    virtual void on_worker_error(std::string_view detail,
+                                 std::source_location where =
+                                     std::source_location::current()) = 0;
 };
 
 class stderr_runtime_events final : public runtime_events
 {
 public:
     void on_accept_error(const std::error_code& error,
-                         bool fatal) override;
-    void on_connection_rejected(std::string_view reason) override;
+                         bool fatal,
+                         std::source_location where) override;
+    void on_connection_rejected(std::string_view reason,
+                                std::source_location where) override;
     void on_connection_error(std::string_view stage,
-                             std::string_view detail) override;
-    void on_worker_error(std::string_view detail) override;
+                             std::string_view detail,
+                             std::source_location where) override;
+    void on_worker_error(std::string_view detail,
+                         std::source_location where) override;
 
 private:
-    void write_line(std::string_view level, std::string_view message);
+    void write_line(std::string_view level,
+                    std::string_view message,
+                    std::source_location where);
 };
 
-std::unique_ptr<runtime_events> make_stderr_runtime_events();
+[[nodiscard]] std::unique_ptr<runtime_events> make_stderr_runtime_events();
 
 } // namespace app

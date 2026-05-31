@@ -15,7 +15,8 @@ If you want concrete references in the tree today:
 
 - `lib/cors/` is the simplest response-decorating gateway module example
 - `lib/host_guard/` is the simplest host-based allowlist module example
-- `lib/static_files/` is the simplest terminal module example
+- `lib/static_files/` is the simplest terminal module example and also holds
+  the reusable static-file service used by that module
 - `lib/route_table/` is the simplest pass-or-respond gateway-style example
 
 ## 1. Understand the module model
@@ -83,6 +84,9 @@ the default document root and the config directory that loaded the module.
 - arbitrary response headers
 - `add_header(...)`
 - `set_header(...)`
+
+Those helpers validate header names and values, so CR/LF injection attempts are
+rejected before the response reaches the wire.
 
 And `garcon::module::result` can also attach response headers to a `pass`
 result with:
@@ -226,6 +230,10 @@ target_include_directories(garcon_hello_gate_module PRIVATE
     "${CMAKE_SOURCE_DIR}/src"
 )
 
+target_link_libraries(garcon_hello_gate_module PRIVATE
+    garcon_sanitizers
+)
+
 set_target_properties(garcon_hello_gate_module PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/modules"
 )
@@ -322,4 +330,6 @@ If you want a reference implementation in the repository:
   helper layer itself
 
 The intended workflow is that most module authors spend their time in their own
-module class and almost never need to think about the raw C ABI.
+module class and almost never need to think about the raw C ABI. Core concerns
+such as keep-alive reuse, TLS handshakes, HSTS, and access logging stay in the
+host runtime, not in individual modules.

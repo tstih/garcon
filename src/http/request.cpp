@@ -9,6 +9,8 @@
 // MIT License.
 #include "http/request.h"
 
+#include <charconv>
+
 namespace http {
 
 namespace {
@@ -82,6 +84,28 @@ bool is_valid_version(std::string_view version)
     return version == "HTTP/1.0" || version == "HTTP/1.1";
 }
 
+bool parse_version(std::string_view version, int& major, int& minor)
+{
+    if (version.size() != 8 || version.substr(0, 5) != "HTTP/")
+        return false;
+
+    if (version[6] != '.')
+        return false;
+
+    const auto major_view = version.substr(5, 1);
+    const auto minor_view = version.substr(7, 1);
+
+    const auto parse_component = [](std::string_view component, int& out) {
+        const auto* begin = component.data();
+        const auto* end = component.data() + component.size();
+        const auto result = std::from_chars(begin, end, out);
+        return result.ec == std::errc{} && result.ptr == end;
+    };
+
+    return parse_component(major_view, major) &&
+           parse_component(minor_view, minor);
+}
+
 bool is_optional_whitespace(char ch)
 {
     return ch == ' ' || ch == '\t';
@@ -126,6 +150,26 @@ bool is_valid_header_value(std::string_view value)
     return true;
 }
 
+char ascii_lower(char ch)
+{
+    if (ch >= 'A' && ch <= 'Z')
+        return static_cast<char>(ch - 'A' + 'a');
+    return ch;
+}
+
+bool ascii_iequals(std::string_view left, std::string_view right)
+{
+    if (left.size() != right.size())
+        return false;
+
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        if (ascii_lower(left[i]) != ascii_lower(right[i]))
+            return false;
+    }
+
+    return true;
+}
+
 bool parse_header_line(std::string_view line, header_field& header)
 {
     if (line.empty() || is_optional_whitespace(line.front()))
@@ -148,35 +192,78 @@ bool parse_header_line(std::string_view line, header_field& header)
 
 } // namespace
 
-std::optional<request> request::parse(std::string_view header_block)
+bool request::connection_token_present(std::string_view token) const noexcept
+{
+    const auto value = header_value("Connection");
+    if (!value)
+        return false;
+
+    std::size_t begin = 0;
+    while (begin <= value->size()) {
+        auto end = value->find(',', begin);
+        if (end == std::string_view::npos)
+            end = value->size();
+
+        const auto part = trim_optional_whitespace(value->substr(begin, end - begin));
+        if (ascii_iequals(part, token))
+            return true;
+
+        if (end == value->size())
+            break;
+        begin = end + 1;
+    }
+
+    return false;
+}
+
+bool request::keep_alive_requested() const noexcept
+{
+    if (version_major == 1 && version_minor == 0)
+        return connection_token_present("keep-alive");
+
+    if (version_major == 1 && version_minor == 1)
+        return !connection_token_present("close");
+
+    return false;
+}
+
+std::string request::version_string() const
+{
+    return "HTTP/" + std::to_string(version_major) + "." + std::to_string(version_minor);
+}
+
+std::expected<request, request_parse_error> request::parse(std::string_view header_block)
 {
     const auto eol = header_block.find("\r\n");
     if (eol == std::string_view::npos)
-        return std::nullopt;
+        return std::unexpected(request_parse_error::malformed_request_line);
 
     const auto line = header_block.substr(0, eol);
 
     const auto sp1 = line.find(' ');
     if (sp1 == std::string_view::npos)
-        return std::nullopt;
+        return std::unexpected(request_parse_error::malformed_request_line);
 
     const auto sp2 = line.find(' ', sp1 + 1);
     if (sp2 == std::string_view::npos)
-        return std::nullopt;
+        return std::unexpected(request_parse_error::malformed_request_line);
     if (line.find(' ', sp2 + 1) != std::string_view::npos)
-        return std::nullopt;
+        return std::unexpected(request_parse_error::malformed_request_line);
 
     const auto method = line.substr(0, sp1);
     const auto target = line.substr(sp1 + 1, sp2 - (sp1 + 1));
     const auto version = line.substr(sp2 + 1);
 
-    if (!is_valid_method(method) ||
-        !is_valid_target(target) ||
-        !is_valid_version(version)) {
-        return std::nullopt;
-    }
+    if (!is_valid_method(method))
+        return std::unexpected(request_parse_error::invalid_method);
+    if (!is_valid_target(target))
+        return std::unexpected(request_parse_error::invalid_target);
+    if (!is_valid_version(version))
+        return std::unexpected(request_parse_error::invalid_version);
 
     request r;
+    if (!parse_version(version, r.version_major, r.version_minor))
+        return std::unexpected(request_parse_error::invalid_version);
     r.method.assign(method);
     r.target.assign(target);
 
@@ -184,7 +271,7 @@ std::optional<request> request::parse(std::string_view header_block)
     while (line_begin <= header_block.size()) {
         const auto line_end = header_block.find("\r\n", line_begin);
         if (line_end == std::string_view::npos)
-            return std::nullopt;
+            return std::unexpected(request_parse_error::invalid_header);
 
         if (line_end == line_begin)
             break;
@@ -192,7 +279,7 @@ std::optional<request> request::parse(std::string_view header_block)
         header_field header;
         if (!parse_header_line(header_block.substr(line_begin, line_end - line_begin),
                                header)) {
-            return std::nullopt;
+            return std::unexpected(request_parse_error::invalid_header);
         }
 
         r.headers.push_back(std::move(header));

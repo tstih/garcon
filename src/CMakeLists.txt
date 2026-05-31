@@ -1,17 +1,35 @@
 find_package(OpenSSL REQUIRED)
 include(GNUInstallDirs)
 
-file(GLOB_RECURSE GARCON_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
-)
-
-list(REMOVE_ITEM GARCON_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/static_files.cpp"
+set(GARCON_SOURCES
+    app/access_log.cpp
+    app/connection_handler.cpp
+    app/command_line.cpp
+    app/default_stream_factory.cpp
+    app/dynamic_module.cpp
+    app/ip_connection_limiter.cpp
+    app/module_config.cpp
+    app/request_pipeline.cpp
+    app/runtime_events.cpp
+    app/work_queue.cpp
+    app/worker_pool.cpp
+    http/buffer.cpp
+    http/framing.cpp
+    http/request.cpp
+    http/response.cpp
+    main.cpp
+    net/listener.cpp
+    net/plain_stream.cpp
+    net/socket.cpp
+    server.cpp
+    tls/context.cpp
+    tls/stream.cpp
 )
 
 add_executable(garcon ${GARCON_SOURCES})
 
 target_compile_features(garcon PRIVATE cxx_std_23)
+target_compile_definitions(garcon PRIVATE GARCON_VERSION="${PROJECT_VERSION}")
 
 target_include_directories(garcon PRIVATE
     "${CMAKE_SOURCE_DIR}/include"
@@ -21,6 +39,7 @@ target_include_directories(garcon PRIVATE
 target_link_libraries(garcon PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
+    garcon_sanitizers
     ${CMAKE_DL_LIBS}
 )
 

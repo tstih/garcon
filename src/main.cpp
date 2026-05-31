@@ -25,6 +25,10 @@ int main(int argc, char** argv)
             std::cout << parser.usage();
             return 0;
         }
+        if (result.show_version) {
+            std::cout << GARCON_VERSION << "\n";
+            return 0;
+        }
 
         app::server s(*result.config);
         s.run();

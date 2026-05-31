@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace net {
@@ -27,11 +28,11 @@ class socket
 public:
     // Constructs an empty socket object that does not own a file descriptor.
     // The socket is initially invalid and must later adopt a descriptor.
-    socket();
+    socket() noexcept;
 
     // Constructs a socket object by explicitly adopting ownership of an
     // already-open socket file descriptor.
-    explicit socket(int fd);
+    explicit socket(int fd, std::string peer_address = {});
 
     // Prevent accidental assignments.
     socket(const socket&) = delete;
@@ -50,32 +51,35 @@ public:
     ~socket();
 
     // Returns true if this object currently owns a valid socket descriptor.
-    bool is_valid() const;
+    [[nodiscard]] bool is_valid() const noexcept;
 
     // Returns the underlying socket file descriptor.
     // Intended for low-level operations only.
-    int  fd() const;
+    [[nodiscard]] int fd() const noexcept;
+
+    [[nodiscard]] std::string_view peer_address() const noexcept;
 
     // Closes the owned socket descriptor, if any, and marks the socket invalid.
     // Safe to call multiple times.
     void close();
 
     // Sets a receive timeout for blocking reads on this socket.
-    bool set_receive_timeout(std::chrono::milliseconds timeout);
+    [[nodiscard]] bool set_receive_timeout(std::chrono::milliseconds timeout);
 
     // Sets a send timeout for blocking writes on this socket.
-    bool set_send_timeout(std::chrono::milliseconds timeout);
+    [[nodiscard]] bool set_send_timeout(std::chrono::milliseconds timeout);
 
     // Receives up to out.size() bytes from the socket.
     // Returns a status plus the number of bytes received on success.
-    read_result recv_some(std::span<std::byte> out);
+    [[nodiscard]] read_result recv_some(std::span<std::byte> out);
 
     // Sends the entire buffer to the socket.
-    io_status send_all(std::span<const std::byte> data);
-    io_status send_all(std::string_view s);
+    [[nodiscard]] io_status send_all(std::span<const std::byte> data);
+    [[nodiscard]] io_status send_all(std::string_view s);
 
 private:
     int _fd;
+    std::string _peer_address;
 };
 
 } // namespace net
