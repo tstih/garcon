@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -26,6 +27,7 @@ struct cli_options
     std::optional<int> port;
     std::optional<std::size_t> worker_threads;
     std::optional<std::size_t> connection_queue_capacity;
+    std::optional<fs::path> module_config_dir;
     std::optional<fs::path> tls_certificate_file;
     std::optional<fs::path> tls_private_key_file;
 };
@@ -76,6 +78,25 @@ std::size_t default_queue_capacity(std::size_t worker_threads)
     return worker_threads * 64U;
 }
 
+fs::path default_module_config_dir(const fs::path& program_path)
+{
+    std::vector<fs::path> candidates;
+
+    if (!program_path.empty()) {
+        candidates.push_back(fs::absolute(program_path).parent_path() / "modules.d");
+    }
+
+    candidates.emplace_back("modules.d");
+    candidates.emplace_back("/etc/garcon/modules.d");
+
+    for (const auto& candidate : candidates) {
+        if (fs::exists(candidate) && fs::is_directory(candidate))
+            return candidate;
+    }
+
+    return candidates.empty() ? fs::path("modules.d") : candidates.front();
+}
+
 fs::path default_www_root()
 {
     const fs::path local_root("www");
@@ -89,7 +110,7 @@ fs::path default_www_root()
     return local_root;
 }
 
-server_config finalize_options(const cli_options& opts)
+server_config finalize_options(const cli_options& opts, const fs::path& program_path)
 {
     if (opts.tls_certificate_file.has_value() !=
         opts.tls_private_key_file.has_value()) {
@@ -100,6 +121,8 @@ server_config finalize_options(const cli_options& opts)
     config.bind_address = opts.bind_address;
     config.port = opts.port.value_or(https_requested(opts) ? 8443 : 8080);
     config.www_root = default_www_root();
+    config.module_config_dir =
+        opts.module_config_dir.value_or(default_module_config_dir(program_path));
     config.worker_threads = opts.worker_threads.value_or(default_worker_threads());
     config.connection_queue_capacity =
         opts.connection_queue_capacity.value_or(default_queue_capacity(config.worker_threads));
@@ -143,6 +166,11 @@ void parse_named_option(std::string_view arg,
 
     if (arg == "--tls-key") {
         out.tls_private_key_file = fs::path(require_value(argc, argv, index, arg));
+        return;
+    }
+
+    if (arg == "--modules-dir") {
+        out.module_config_dir = fs::path(require_value(argc, argv, index, arg));
         return;
     }
 
@@ -207,7 +235,9 @@ command_line_result command_line_parser::parse() const
     }
 
     return command_line_result{
-        .config = finalize_options(out),
+        .config = finalize_options(out,
+                                   (_argc > 0 && _argv[0]) ? fs::path(_argv[0])
+                                                           : fs::path{}),
     };
 }
 
@@ -217,6 +247,7 @@ std::string command_line_parser::usage() const
 
     return "usage: " + std::string(program_name) +
            " [port] [--bind ADDRESS] [--port PORT]"
+           " [--modules-dir DIR]"
            " [--workers N] [--queue-capacity N]"
            " [--tls-cert PATH --tls-key PATH]\n";
 }

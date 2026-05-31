@@ -10,8 +10,26 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace app {
+
+namespace {
+
+void append_response_headers(http::response& response,
+                             const std::vector<http::header_field>& headers)
+{
+    response.headers.insert(response.headers.end(), headers.begin(), headers.end());
+}
+
+http::response finalize_response(http::response response,
+                                 const std::vector<http::header_field>& pending_headers)
+{
+    append_response_headers(response, pending_headers);
+    return response;
+}
+
+} // namespace
 
 void request_pipeline::add_module(std::unique_ptr<request_module> module)
 {
@@ -23,8 +41,14 @@ void request_pipeline::add_module(std::unique_ptr<request_module> module)
 
 http::response request_pipeline::handle(const http::request& request) const
 {
+    std::vector<http::header_field> pending_headers;
+
     for (const auto& module : _modules) {
         const auto result = module->handle(request);
+
+        pending_headers.insert(pending_headers.end(),
+                               result.response_headers.begin(),
+                               result.response_headers.end());
 
         switch (result.outcome) {
         case module_outcome::pass:
@@ -35,19 +59,22 @@ http::response request_pipeline::handle(const http::request& request) const
                     std::string("module '") +
                     std::string(module->name()) +
                     "' returned outcome::respond without a response");
-            return *result.response;
+            return finalize_response(*result.response, pending_headers);
         case module_outcome::upgrade:
-            return http::response::text(501,
-                                        "Not Implemented",
-                                        "connection upgrade not implemented\n");
+            return finalize_response(http::response::text(501,
+                                                          "Not Implemented",
+                                                          "connection upgrade not implemented\n"),
+                                     pending_headers);
         case module_outcome::error:
-            return http::response::text(500,
-                                        "Internal Server Error",
-                                        "module error\n");
+            return finalize_response(http::response::text(500,
+                                                          "Internal Server Error",
+                                                          "module error\n"),
+                                     pending_headers);
         }
     }
 
-    return http::response::text(404, "Not Found", "not found\n");
+    return finalize_response(http::response::text(404, "Not Found", "not found\n"),
+                             pending_headers);
 }
 
 } // namespace app

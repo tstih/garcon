@@ -13,8 +13,10 @@
 #include "http/response.h"
 
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace app {
 
@@ -30,6 +32,7 @@ struct module_result
 {
     module_outcome outcome = module_outcome::pass;
     std::optional<http::response> response;
+    std::vector<http::header_field> response_headers;
 
     static module_result pass()
     {
@@ -52,6 +55,15 @@ struct module_result
     static module_result error()
     {
         return module_result{.outcome = module_outcome::error};
+    }
+
+    module_result& add_response_header(std::string_view name, std::string_view value)
+    {
+        response_headers.push_back(http::header_field{
+            .name = std::string(name),
+            .value = std::string(value),
+        });
+        return *this;
     }
 };
 

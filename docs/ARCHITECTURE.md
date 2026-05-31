@@ -5,10 +5,10 @@ gains features. The architecture favors explicit ownership, narrow interfaces,
 and conservative concurrency over framework-like abstraction or hidden runtime
 machinery.
 
-This document is the consolidated design overview for the current `v0.0.6`
+This document is the consolidated design overview for the current `v0.0.7`
 codebase. It covers process startup, transport and TLS handling, bounded
-concurrency, the HTTP parsing path, the ordered request pipeline, static-file
-serving, diagnostics, and the main extension seams.
+concurrency, the HTTP parsing path, shared-module loading, the ordered request
+pipeline, static-file serving, diagnostics, and the main extension seams.
 
 ## Architectural goals
 
@@ -26,8 +26,9 @@ The current structure is shaped by a few deliberate constraints:
 Several things are intentionally not implemented yet:
 
 - HTTP keep-alive or request pipelining
-- request bodies, routing, and application handlers beyond static files
-- WebSocket or other connection-upgrade support
+- request bodies, richer header parsing, and upstream proxying
+- WebSocket or other connection-upgrade support beyond the placeholder
+  `upgrade` outcome
 - one thread per connection
 - an `epoll` or reactor-style runtime
 
@@ -89,6 +90,13 @@ The CLI rejects malformed or zero worker and queue values, and it requires
 `--tls-cert` and `--tls-key` to be provided together. This keeps the runtime
 configuration valid before networking starts.
 
+Module configuration discovery follows a similarly small policy:
+
+- prefer `modules.d/` next to the executable
+- then try a local `modules.d/`
+- then try `/etc/garcon/modules.d`
+- allow `--modules-dir` to override all of the above
+
 Document-root discovery also follows a small policy:
 
 - prefer a local `www/` directory during development
@@ -110,9 +118,9 @@ coordinates:
 - the fixed worker pool
 
 The current root request handler is not a monolithic function. It is an
-ordered `request_pipeline`, currently seeded with a `static_files_module`.
-That means `server` coordinates the serving path without embedding application
-behavior directly in `server.cpp`.
+ordered `request_pipeline`, populated at startup from a configured
+`modules.d/` directory. That means `server` coordinates the serving path
+without embedding application behavior directly in `server.cpp`.
 
 The runtime loop is split in two parts:
 
@@ -319,10 +327,11 @@ server:
 
 - method
 - target
+- header fields
 
-Only the request line is parsed today. The parser accepts only origin-form
-targets and HTTP/1.0 or HTTP/1.1. Header fields and request bodies are left for
-future work.
+The parser accepts only origin-form targets and HTTP/1.0 or HTTP/1.1. It also
+parses header fields into a small owning collection with case-insensitive
+lookup helpers. Request bodies are still left for future work.
 
 ### Response building
 
@@ -331,6 +340,7 @@ future work.
 - status code
 - reason phrase
 - optional content type
+- arbitrary response headers
 - optional explicit content length
 - response body
 
@@ -365,17 +375,53 @@ The current meaning of each outcome is:
 - `error`: currently mapped to `500 Internal Server Error`
 
 This model is intentionally small but already gives the runtime a stable seam
-for future routing, authentication, or API modules.
+for future routing, authentication, or API modules. The host loads concrete
+modules through the public ABI in `include/garcon/module_abi.h`.
+
+Modules may also attach response headers to a `pass` result. The pipeline
+accumulates those headers and merges them into whichever later response becomes
+final. That is the mechanism used by the current CORS module to decorate
+downstream `200`, `401`, `404`, and similar responses without owning the whole
+request.
+
+### Shared-module loading
+
+`src/app/module_config.*` treats `modules.d/` like a small Unix-style config
+directory:
+
+- each `.conf` file contributes one configured module
+- files are sorted lexically before loading
+- each file must contain a `path=` entry naming the shared library
+- relative `path=` values are resolved relative to the config file
+- the full config text is passed to the module constructor
+
+The C ABI stays intentionally small for loader stability. Module authors are
+expected to implement normal C++ classes through the helper layer in
+`include/garcon/module_cpp.h`, which hides the ABI glue and exposes
+`http::request`, `http::response`, request headers, and small configuration
+helpers.
 
 ### Current module set
 
-Today the pipeline contains one concrete module:
+Today the default development pipeline contains five configured shared modules:
 
-- `static_files_module`
+- `host-guard`, loaded first through `modules.d/03-host-guard.conf`
+- `route-table`, loaded second through `modules.d/05-route-table.conf`
+- `cors`, loaded third through `modules.d/07-cors.conf`
+- `header-guard`, loaded fourth through `modules.d/08-header-guard.conf`
+- `static-files`, loaded fifth through `modules.d/10-static-files.conf`
 
-The module is a thin adapter around the reusable `static_files` service. The
-server runtime therefore depends on the pipeline abstraction, while the actual
-static-file logic lives outside `server.cpp`.
+`host-guard` is the earliest allowlist module and checks the `Host` header
+before later processing begins. In the default development config it allows
+local `localhost` and `127.0.0.1` requests only. `route-table` then responds
+to `/healthz` and `/readyz`, and passes `/api/*` onward. `cors` then answers
+matching preflight `OPTIONS` requests and decorates later responses for allowed
+origins. `header-guard` then protects `/api/*` by requiring the development
+API key header before the request may reach later modules. `static-files` is
+the terminal fallback module and is a thin adapter around the reusable
+`static_files` service. The server runtime therefore depends on the pipeline
+abstraction and loader, while the actual request behavior lives outside
+`server.cpp`.
 
 ## 8. Static-file service
 
@@ -446,12 +492,17 @@ For a successful HTTP or HTTPS request, the runtime flow is:
 7. The stream receives read and write timeouts.
 8. The TLS handshake runs when HTTPS is enabled.
 9. `http::framing` reads the header block.
-10. `http::request::parse()` validates the request line.
+10. `http::request::parse()` validates the request line and header fields.
 11. `request_pipeline` calls modules in order.
-12. `static_files_module` delegates to `static_files`.
-13. `http::response` serializes the final result through the stream.
+12. The configured `host-guard` module may reject or pass based on `Host`.
+13. The configured `route-table` module may respond directly or pass onward.
+14. The configured `cors` module may answer preflight requests or attach
+    response headers for later responses.
+15. The configured `header-guard` module may reject or pass `/api/*` requests.
+16. The configured `static-files` module delegates to `static_files`.
+17. `http::response` serializes the final result through the stream.
 
-The crucial point is that steps 9 through 13 are the same regardless of
+The crucial point is that steps 9 through 17 are the same regardless of
 transport.
 
 ## 11. Tunable limits and runtime constants
@@ -472,11 +523,14 @@ The current architecture is designed to grow in a few predictable directions.
 
 Likely future extension seams are:
 
-- more pipeline modules before or after static files
+- more pipeline modules before, between, or after the current host-guard,
+  route-table, cors, header-guard, and static-files chain
 - routing and path dispatch on top of `request_pipeline`
-- request-header parsing beyond the request line
+- richer request-header normalization and mutation
+- richer response-header policy and transformation
 - request bodies and JSON handling in the `http/` and `app/` layers
 - cookies, sessions, and authentication modules
+- richer host services and exchange data behind the module ABI
 - alternative diagnostics sinks behind `runtime_events`
 
 Because the concurrency boundary, stream abstraction, and request pipeline are
@@ -485,11 +539,15 @@ loop, TLS integration, or file-serving service.
 
 ## 13. Verification and operational confidence
 
-The current architecture is backed by three smoke suites:
+The current architecture is backed by seven smoke suites:
 
+- `tests/cors_smoke.sh`
+- `tests/host_guard_smoke.sh`
+- `tests/header_guard_smoke.sh`
 - `tests/security_smoke.sh`
 - `tests/https_smoke.sh`
 - `tests/concurrency_smoke.sh`
+- `tests/route_table_smoke.sh`
 
 Together they exercise:
 
@@ -497,6 +555,10 @@ Together they exercise:
 - malformed-request handling
 - static-file containment checks
 - bounded file serving
+- guarded host allowlisting
+- request-header parsing and guarded API access
+- response-header propagation and CORS behavior
+- lexical module ordering and gateway-style route handling
 - TLS startup and handshake behavior
 - progress with stalled HTTP or TLS clients
 - queue-full overload behavior
@@ -514,7 +576,11 @@ The current structure was not introduced all at once:
 - `v0.0.4` added bounded concurrency with a work queue and worker pool
 - `v0.0.5` introduced explicit accept-result and runtime-diagnostics seams
 - `v0.0.6` turned the root handler into an ordered request pipeline and
-  extracted `static_files_module`
+  extracted the first in-process static-files module
+- `v0.0.7` introduced a public module ABI, `modules.d/` configuration, a
+  small C++ module SDK, parsed request headers, arbitrary response headers,
+  and the default shared `host-guard`, `route-table`, `cors`,
+  `header-guard`, and `static-files` module chain
 
 That incremental history explains why the codebase remains small: each release
 added one architectural seam at a time instead of replacing the whole runtime.

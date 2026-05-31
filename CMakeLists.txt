@@ -16,7 +16,16 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # --- Add subdirectories ---
+add_subdirectory(lib)
 add_subdirectory(src)
+
+add_dependencies(garcon
+    garcon_cors_module
+    garcon_host_guard_module
+    garcon_header_guard_module
+    garcon_route_table_module
+    garcon_static_files_module
+)
 
 enable_testing()
 add_subdirectory(tests)

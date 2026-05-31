@@ -1,8 +1,9 @@
 # Garçon Tutorial
 
 This tutorial shows how to build, configure, and run Garçon in development. It
-covers both HTTP and HTTPS, the packaged install layout, and the concurrency
-controls introduced in `v0.0.4` and retained in `v0.0.5`.
+covers the current shared-module layout, HTTP and HTTPS, the present packaging
+story, and the bounded-concurrency controls introduced in `v0.0.4` and
+retained in later releases.
 
 ## 1. Install build dependencies
 
@@ -34,8 +35,10 @@ cmake --build build
 ~~~
 
 The main executable is written to `bin/garcon`.
+The default shared modules are written to `bin/modules/`, and the default
+module configuration is copied to `bin/modules.d/`.
 
-## 3. Prepare static content
+## 3. Prepare content and understand the default modules
 
 Garçon serves files from a `www/` directory.
 
@@ -43,6 +46,38 @@ Garçon serves files from a `www/` directory.
 - in an installed package, it can fall back to `/usr/share/garcon/www`
 
 At minimum, place an `index.html` file under `www/`.
+
+Garçon also loads request modules from a `modules.d/` directory. In the
+default development build:
+
+- `bin/modules.d/03-host-guard.conf` points at the shared `host-guard`
+  module in `bin/modules/`
+- `bin/modules.d/05-route-table.conf` points at the shared `route-table`
+  module in `bin/modules/`
+- `bin/modules.d/07-cors.conf` points at the shared `cors`
+  module in `bin/modules/`
+- `bin/modules.d/08-header-guard.conf` points at the shared `header-guard`
+  module in `bin/modules/`
+- `bin/modules.d/10-static-files.conf` points at the shared `static-files`
+  module in `bin/modules/`
+
+Those numeric prefixes are just ordering hints. Garçon loads `.conf` files in
+lexical order, so the default development chain is:
+
+1. `host-guard`
+2. `route-table`
+3. `cors`
+4. `header-guard`
+5. `static-files`
+
+By default that means:
+
+- only `Host: localhost` and `Host: 127.0.0.1` are accepted in development
+- `GET /healthz` returns `200 ok`
+- `GET /readyz` returns `200 ready`
+- CORS allows `http://localhost:3000` and `http://127.0.0.1:3000` for `/api/*`
+- `/api/*` requires `X-Garcon-API-Key: dev-key`
+- everything else eventually falls back to static files
 
 ## 4. Run HTTP locally
 
@@ -58,6 +93,12 @@ Then open:
 http://127.0.0.1:8080/
 ~~~
 
+The default route-table module also gives you a quick liveness check:
+
+~~~text
+http://127.0.0.1:8080/healthz
+~~~
+
 To pick a different port:
 
 ~~~sh
@@ -69,6 +110,16 @@ There is also a positional port form:
 ~~~sh
 ./bin/garcon 9090
 ~~~
+
+To use a different module configuration directory:
+
+~~~sh
+./bin/garcon --modules-dir ./my-modules.d
+~~~
+
+Without `--modules-dir`, Garçon first looks for `modules.d/` next to the
+executable, then for a local `modules.d/`, and finally for
+`/etc/garcon/modules.d`.
 
 ## 5. Tune concurrency
 
@@ -154,12 +205,39 @@ make dist
 The final `.deb` is written to `bin/`. Temporary CPack files stay in the build
 tree.
 
+Today the Debian package installs the main binary, docs, and packaged `www/`
+content. Shared modules and a populated installed `modules.d/` layout are not
+yet packaged, so development builds remain the most complete way to exercise
+the pluggable architecture.
+
 ## 10. Verify the server quickly
 
 Simple HTTP check:
 
 ~~~sh
 curl -fsS http://127.0.0.1:8080/
+~~~
+
+Route-table health check:
+
+~~~sh
+curl -fsS http://127.0.0.1:8080/healthz
+~~~
+
+Guarded API check:
+
+~~~sh
+curl -fsS -H 'X-Garcon-API-Key: dev-key' http://127.0.0.1:8080/api/ping.txt
+~~~
+
+Preflight CORS check:
+
+~~~sh
+curl -i -X OPTIONS \
+  -H 'Origin: http://localhost:3000' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Access-Control-Request-Headers: X-Garcon-API-Key' \
+  http://127.0.0.1:8080/api/ping.txt
 ~~~
 
 Simple HTTPS check with a self-signed certificate:
@@ -174,4 +252,8 @@ To run the automated smoke tests from a configured build tree:
 ctest --test-dir build --output-on-failure
 ~~~
 
-This runs the security, HTTPS, and concurrency smoke suites.
+This runs the CORS, host-guard, header-guard, security, HTTPS, concurrency,
+and route-table smoke suites.
+
+If you want to write your own shared module next, continue with
+[docs/MODULE-DEVELOPMENT-TUTORIAL.md](/home/tstih/data/wischner/garcon/docs/MODULE-DEVELOPMENT-TUTORIAL.md).

@@ -28,6 +28,12 @@ The package installs:
 At runtime Garçon prefers a local `www/` directory for development, and falls
 back to `/usr/share/garcon/www` when running from an installed package.
 
+The runtime can also discover module configuration from `modules.d/` next to
+the executable, a local `modules.d/`, or `/etc/garcon/modules.d`. The current
+Debian package does not yet install shared modules or populate
+`/etc/garcon/modules.d`, so the packaged layout is presently a base server
+package rather than the final pluggable-runtime layout.
+
 The installed binary accepts the same runtime flags as the development build,
-including `--bind`, `--port`, `--tls-cert`, `--tls-key`, `--workers`, and
-`--queue-capacity`.
+including `--bind`, `--port`, `--tls-cert`, `--tls-key`, `--modules-dir`,
+`--workers`, and `--queue-capacity`.

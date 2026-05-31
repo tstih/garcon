@@ -1,5 +1,42 @@
 # Changelog
 
+## [v0.0.7] - Unreleased
+### Added
+- Added the public shared-module ABI in `include/garcon/module_abi.h`.
+- Added dynamic request-module loading from a configured `modules.d/` directory.
+- Added the first shared module under `lib/static_files/`.
+- Added a low-overhead `route-table` shared module with default `healthz`,
+  `readyz`, and `/api/*` pass-through rules.
+- Added parsed request headers to `http::request` and exposed them to shared
+  modules through the ABI and C++ wrapper layer.
+- Added arbitrary response headers to `http::response` and exposed them to
+  shared modules through the ABI and C++ wrapper layer.
+- Added a low-overhead `host-guard` shared module to protect requests with
+  `Host` allowlists.
+- Added a low-overhead `cors` shared module to answer preflight requests and
+  decorate downstream API responses.
+- Added a low-overhead `header-guard` shared module to protect `/api/*`
+  routes with header checks.
+- Added `--modules-dir` to override the default module-configuration directory.
+
+### Refactored
+- Removed the built-in `src/modules/static_files_module.*` request module from the main server.
+- Kept the server focused on transport, TLS, parsing, and pipeline orchestration while moving static-file request behavior behind the shared-module boundary.
+
+### Verified
+- Preserved the existing HTTP security, HTTPS, and concurrency smoke-test coverage after switching the default pipeline to shared modules.
+- Added focused smoke coverage for the default route-table module behavior and lexical module ordering.
+- Added focused smoke coverage for guarded host allowlisting through the new
+  host-guard module.
+- Added focused smoke coverage for CORS preflight handling and downstream
+  response-header propagation through the new `cors` module.
+- Added focused smoke coverage for guarded API access through the new
+  header-guard module.
+
+### Documented
+- Refreshed the main README, architecture guide, tutorial, and Debian packaging notes for the shared-module runtime.
+- Added a dedicated module-development tutorial under `docs/`.
+
 ## [v0.0.6] - Unreleased
 ### Added
 - Introduced a small ordered request pipeline with four module outcomes: `pass`, `respond`, `upgrade`, and `error`.

@@ -9,7 +9,9 @@
 // MIT License.
 #include "server.h"
 
+#include "app/dynamic_module.h"
 #include "app/default_stream_factory.h"
+#include "app/module_config.h"
 #include "app/request_pipeline.h"
 #include "app/worker_pool.h"
 #include "config.h"
@@ -17,7 +19,6 @@
 #include "http/framing.h"
 #include "http/request.h"
 #include "http/response.h"
-#include "modules/static_files_module.h"
 
 #include <iostream>
 #include <memory>
@@ -50,7 +51,14 @@ void log_startup(const server_config& config)
 std::unique_ptr<request_handler> create_request_handler(const server_config& config)
 {
     auto pipeline = std::make_unique<request_pipeline>();
-    pipeline->add_module(std::make_unique<static_files_module>(config.www_root));
+
+    for (const auto& module : load_configured_modules(config.module_config_dir)) {
+        pipeline->add_module(std::make_unique<dynamic_module>(module.library_file,
+                                                              module.config_directory,
+                                                              module.config_text,
+                                                              config));
+    }
+
     return pipeline;
 }
 

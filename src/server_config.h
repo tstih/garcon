@@ -27,6 +27,7 @@ struct server_config
     std::string bind_address = "127.0.0.1";
     int port = 8080;
     std::filesystem::path www_root = "www";
+    std::filesystem::path module_config_dir = "modules.d";
     std::size_t worker_threads = 4;
     std::size_t connection_queue_capacity = 256;
     std::optional<tls_config> tls;

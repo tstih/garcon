@@ -23,14 +23,23 @@ well-structured, comprehensible foundation for modern C++ backend development.
 
 ## Current status
 
-**v0.0.6**
+**v0.0.7**
 
 - Concurrent HTTP/1.1 server with direct HTTPS support
 - Serves static files from a configurable `www/` directory
 - Strict request-line validation and safer response handling
 - Fixed-size `std::jthread` worker pool with a bounded accepted-connection queue
 - Ordered request pipeline with `pass`, `respond`, `upgrade`, and `error` outcomes
-- `static_files_module` extracted as the first concrete pipeline module
+- Request headers parsed into `http::request` and exposed to shared modules
+- Arbitrary response headers supported in `http::response` and exposed to shared modules
+- Public module ABI under `include/garcon/`
+- Simple C++ module authoring layer in `include/garcon/module_cpp.h`
+- Shared-module loading from a configured `modules.d/` directory
+- Low-overhead `host-guard` gateway module under `lib/host_guard/`
+- Low-overhead `route-table` gateway module under `lib/route_table/`
+- Low-overhead `cors` gateway module under `lib/cors/`
+- Low-overhead `header-guard` gateway module under `lib/header_guard/`
+- Static files served by the shared `static-files` module under `lib/static_files/`
 - Request-handler and stream-factory seams for cleaner extensibility
 - Explicit accept-error classification and runtime diagnostics
 - Clean modular structure (`net`, `http`, `tls`, `app`)
@@ -40,14 +49,15 @@ well-structured, comprehensible foundation for modern C++ backend development.
 - Explicit runtime tuning through `--workers` and `--queue-capacity`
 - Designed to be extended with routing, cookies, and authentication
 
-`v0.0.6` builds on `v0.0.5` by introducing the simplified module pipeline we
-discussed:
+`v0.0.7` builds on `v0.0.6` by externalizing the first request module behind a
+small shared-library ABI:
 
-- requests now flow through an ordered root pipeline
+- requests now flow through an ordered root pipeline loaded lexically from `modules.d/`
 - each module can `pass`, `respond`, request a future `upgrade`, or signal `error`
-- static-file serving is no longer wired directly into the server runtime
-- the first extracted module is `static_files_module`, backed by a reusable file-serving service
-- the `v0.0.2` through `v0.0.5` security and concurrency guarantees stay intact
+- the host server now focuses on transport, TLS, request parsing, and orchestration
+- module authors can implement normal C++ classes behind the ABI with `module_cpp.h`
+- the default development chain is `host-guard`, then `route-table`, then `cors`, then `header-guard`, then `static-files`
+- the `v0.0.2` through `v0.0.6` security and concurrency guarantees stay intact
 
 This version is intended for development, experimentation, and learning.
 It is not yet suitable for exposure to untrusted networks.
@@ -58,15 +68,16 @@ release is documented in
 
 ## Planned features
 
-- Request routing and handler plugins
+- Richer request routing, upstream proxying, and handler plugins
 - Cookie parsing and session management
 - OAuth 2.0 and OpenID Connect (OIDC) support
 - Basic JSON-based web APIs
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](/home/tstih/data/wischner/garcon/docs/ARCHITECTURE.md) gives the detailed design overview for Garçon's transport, TLS, concurrency, pipeline, and static-file layers
+- [docs/ARCHITECTURE.md](/home/tstih/data/wischner/garcon/docs/ARCHITECTURE.md) gives the detailed design overview for Garçon's transport, TLS, concurrency, pipeline, module, and static-file layers
 - [docs/TUTORIAL.md](/home/tstih/data/wischner/garcon/docs/TUTORIAL.md) walks through build, configuration, HTTP, HTTPS, concurrency tuning, and packaging
+- [docs/MODULE-DEVELOPMENT-TUTORIAL.md](/home/tstih/data/wischner/garcon/docs/MODULE-DEVELOPMENT-TUTORIAL.md) shows how to build a shared Garçon module in modern C++
 
 ## Build
 
@@ -97,7 +108,9 @@ cmake -S . -B build
 cmake --build build
 ~~~
 
-The resulting binary is placed in the bin/ directory.
+The resulting binary is placed in `bin/`. Shared modules are written to
+`bin/modules/`, and the default module configuration is copied to
+`bin/modules.d/`.
 
 ## Run
 
@@ -107,7 +120,7 @@ By default Garçon binds only to `127.0.0.1`.
 ./bin/garcon
 ~~~
 
-`v0.0.4` through `v0.0.6` choose conservative concurrency defaults automatically:
+`v0.0.4` and later choose conservative concurrency defaults automatically:
 
 - worker threads: `std::thread::hardware_concurrency()`, with a fallback of `4`
 - queue capacity: `worker_threads * 64`
@@ -124,6 +137,37 @@ explicitly. HTTPS defaults to port `8443` unless `--port` is set:
 ~~~sh
 ./bin/garcon --tls-cert cert.pem --tls-key key.pem --workers 8 --queue-capacity 512
 ~~~
+
+By default Garçon looks for `modules.d/` next to the executable, then in a
+local `modules.d/`, then under `/etc/garcon/modules.d`. You can point it at a
+different configuration directory with:
+
+~~~sh
+./bin/garcon --modules-dir /path/to/modules.d
+~~~
+
+In the default development configuration, the host-guard module first allows:
+
+- `Host: localhost`
+- `Host: 127.0.0.1`
+
+The route-table module then responds to:
+
+- `GET /healthz`
+- `GET /readyz`
+
+Requests under `/api/*` then pass through the `cors` module, which allows:
+
+- `http://localhost:3000`
+- `http://127.0.0.1:3000`
+
+The `header-guard` module then requires:
+
+- `X-Garcon-API-Key: dev-key`
+
+Preflight `OPTIONS` requests for those origins are handled by the `cors`
+module before static files act as the fallback handler.
+
 
 To listen on a different interface, make the choice explicit for either HTTP
 or HTTPS:
@@ -150,6 +194,12 @@ make dist
 
 The generated `.deb` file is written to the repository `bin/` directory.
 Temporary CPack working directories stay under the build tree, not in `bin/`.
+
+Development builds also stage shared modules in `bin/modules/` and default
+module configuration in `bin/modules.d/`. The installed Debian package does
+not yet populate an installed module directory or `/etc/garcon/modules.d`, so
+the current package should still be treated as a base server package rather
+than the final pluggable-runtime layout.
 
 ## License
 

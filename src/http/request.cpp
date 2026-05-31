@@ -2,8 +2,8 @@
 //
 // This file implements parsing logic for the http::request structure,
 // extracting the request method and target from a strictly validated HTTP
-// request line. The implementation remains intentionally small and ignores
-// headers and message bodies.
+// request line and header fields. The implementation remains intentionally
+// small and ignores request bodies.
 //
 // Copyright 2025 Tomaz Stih. All rights reserved.
 // MIT License.
@@ -82,6 +82,70 @@ bool is_valid_version(std::string_view version)
     return version == "HTTP/1.0" || version == "HTTP/1.1";
 }
 
+bool is_optional_whitespace(char ch)
+{
+    return ch == ' ' || ch == '\t';
+}
+
+std::string_view trim_optional_whitespace(std::string_view value)
+{
+    std::size_t begin = 0;
+    while (begin < value.size() && is_optional_whitespace(value[begin]))
+        ++begin;
+
+    std::size_t end = value.size();
+    while (end > begin && is_optional_whitespace(value[end - 1]))
+        --end;
+
+    return value.substr(begin, end - begin);
+}
+
+bool is_valid_header_name(std::string_view name)
+{
+    if (name.empty())
+        return false;
+
+    for (const char ch : name) {
+        if (!is_token_char(static_cast<unsigned char>(ch)))
+            return false;
+    }
+
+    return true;
+}
+
+bool is_valid_header_value(std::string_view value)
+{
+    for (const char ch : value) {
+        const auto byte = static_cast<unsigned char>(ch);
+        if (ch == '\t')
+            continue;
+        if (byte < 0x20 || byte == 0x7f)
+            return false;
+    }
+
+    return true;
+}
+
+bool parse_header_line(std::string_view line, header_field& header)
+{
+    if (line.empty() || is_optional_whitespace(line.front()))
+        return false;
+
+    const auto colon = line.find(':');
+    if (colon == std::string_view::npos || colon == 0)
+        return false;
+
+    const auto name = line.substr(0, colon);
+    const auto value = trim_optional_whitespace(line.substr(colon + 1));
+
+    if (!is_valid_header_name(name) || !is_valid_header_value(value))
+        return false;
+
+    header.name.assign(name);
+    header.value.assign(value);
+    return true;
+}
+
 } // namespace
 
 std::optional<request> request::parse(std::string_view header_block)
@@ -115,6 +179,26 @@ std::optional<request> request::parse(std::string_view header_block)
     request r;
     r.method.assign(method);
     r.target.assign(target);
+
+    std::size_t line_begin = eol + 2;
+    while (line_begin <= header_block.size()) {
+        const auto line_end = header_block.find("\r\n", line_begin);
+        if (line_end == std::string_view::npos)
+            return std::nullopt;
+
+        if (line_end == line_begin)
+            break;
+
+        header_field header;
+        if (!parse_header_line(header_block.substr(line_begin, line_end - line_begin),
+                               header)) {
+            return std::nullopt;
+        }
+
+        r.headers.push_back(std::move(header));
+        line_begin = line_end + 2;
+    }
+
     return r;
 }
 
