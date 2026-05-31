@@ -1,12 +1,7 @@
 # Changelog
 
-## [v0.0.7] - Unreleased
+## [v0.0.8] - Unreleased
 ### Added
-- Added the public shared-module ABI in `include/garcon/module_abi.h`.
-- Added dynamic request-module loading from a configured `modules.d/` directory.
-- Added the first shared module under `lib/static_files/`.
-- Added a low-overhead `route-table` shared module with default `healthz`,
-  `readyz`, and `/api/*` pass-through rules.
 - Added parsed request headers to `http::request` and exposed them to shared
   modules through the ABI and C++ wrapper layer.
 - Added arbitrary response headers to `http::response` and exposed them to
@@ -17,6 +12,26 @@
   decorate downstream API responses.
 - Added a low-overhead `header-guard` shared module to protect `/api/*`
   routes with header checks.
+
+### Verified
+- Added focused smoke coverage for guarded host allowlisting through the new
+  host-guard module.
+- Added focused smoke coverage for CORS preflight handling and downstream
+  response-header propagation through the new `cors` module.
+- Added focused smoke coverage for guarded API access through the new
+  header-guard module.
+
+### Documented
+- Refreshed the main README, architecture guide, tutorial, and
+  module-development tutorial for the gateway-oriented shared-module runtime.
+
+## [v0.0.7] - Unreleased
+### Added
+- Added the public shared-module ABI in `include/garcon/module_abi.h`.
+- Added dynamic request-module loading from a configured `modules.d/` directory.
+- Added the first shared module under `lib/static_files/`.
+- Added a low-overhead `route-table` shared module with default `healthz`,
+  `readyz`, and `/api/*` pass-through rules.
 - Added `--modules-dir` to override the default module-configuration directory.
 
 ### Refactored
@@ -26,16 +41,10 @@
 ### Verified
 - Preserved the existing HTTP security, HTTPS, and concurrency smoke-test coverage after switching the default pipeline to shared modules.
 - Added focused smoke coverage for the default route-table module behavior and lexical module ordering.
-- Added focused smoke coverage for guarded host allowlisting through the new
-  host-guard module.
-- Added focused smoke coverage for CORS preflight handling and downstream
-  response-header propagation through the new `cors` module.
-- Added focused smoke coverage for guarded API access through the new
-  header-guard module.
 
 ### Documented
-- Refreshed the main README, architecture guide, tutorial, and Debian packaging notes for the shared-module runtime.
-- Added a dedicated module-development tutorial under `docs/`.
+- Refreshed the main README, architecture guide, tutorial, and Debian packaging
+  notes for the first shared-module runtime.
 
 ## [v0.0.6] - Unreleased
 ### Added

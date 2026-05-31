@@ -5,7 +5,7 @@ gains features. The architecture favors explicit ownership, narrow interfaces,
 and conservative concurrency over framework-like abstraction or hidden runtime
 machinery.
 
-This document is the consolidated design overview for the current `v0.0.7`
+This document is the consolidated design overview for the current `v0.0.8`
 codebase. It covers process startup, transport and TLS handling, bounded
 concurrency, the HTTP parsing path, shared-module loading, the ordered request
 pipeline, static-file serving, diagnostics, and the main extension seams.
@@ -578,9 +578,11 @@ The current structure was not introduced all at once:
 - `v0.0.6` turned the root handler into an ordered request pipeline and
   extracted the first in-process static-files module
 - `v0.0.7` introduced a public module ABI, `modules.d/` configuration, a
-  small C++ module SDK, parsed request headers, arbitrary response headers,
-  and the default shared `host-guard`, `route-table`, `cors`,
-  `header-guard`, and `static-files` module chain
+  small C++ module SDK, and the first shared `static-files` and `route-table`
+  modules
+- `v0.0.8` added parsed request headers, arbitrary response headers, and the
+  default shared `host-guard`, `route-table`, `cors`, `header-guard`, and
+  `static-files` module chain
 
 That incremental history explains why the codebase remains small: each release
 added one architectural seam at a time instead of replacing the whole runtime.

@@ -23,7 +23,7 @@ well-structured, comprehensible foundation for modern C++ backend development.
 
 ## Current status
 
-**v0.0.7**
+**v0.0.8**
 
 - Concurrent HTTP/1.1 server with direct HTTPS support
 - Serves static files from a configurable `www/` directory
@@ -49,15 +49,17 @@ well-structured, comprehensible foundation for modern C++ backend development.
 - Explicit runtime tuning through `--workers` and `--queue-capacity`
 - Designed to be extended with routing, cookies, and authentication
 
-`v0.0.7` builds on `v0.0.6` by externalizing the first request module behind a
-small shared-library ABI:
+`v0.0.8` builds on `v0.0.7` by making the shared-module runtime more
+gateway-friendly:
 
 - requests now flow through an ordered root pipeline loaded lexically from `modules.d/`
 - each module can `pass`, `respond`, request a future `upgrade`, or signal `error`
+- parsed request headers are now exposed to shared modules
+- arbitrary response headers can now be produced and propagated across the pipeline
 - the host server now focuses on transport, TLS, request parsing, and orchestration
 - module authors can implement normal C++ classes behind the ABI with `module_cpp.h`
 - the default development chain is `host-guard`, then `route-table`, then `cors`, then `header-guard`, then `static-files`
-- the `v0.0.2` through `v0.0.6` security and concurrency guarantees stay intact
+- the `v0.0.2` through `v0.0.7` security and concurrency guarantees stay intact
 
 This version is intended for development, experimentation, and learning.
 It is not yet suitable for exposure to untrusted networks.
