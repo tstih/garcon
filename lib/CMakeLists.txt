@@ -1,5 +1,8 @@
 add_subdirectory(cors)
 add_subdirectory(host_guard)
+add_subdirectory(router)
 add_subdirectory(header_guard)
+add_subdirectory(jwt_auth)
 add_subdirectory(route_table)
+add_subdirectory(rate_limit)
 add_subdirectory(static_files)

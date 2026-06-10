@@ -52,6 +52,14 @@ add_test(
 )
 
 add_test(
+    NAME jwt_auth_smoke
+    COMMAND bash
+            "${CMAKE_CURRENT_SOURCE_DIR}/jwt_auth_smoke.sh"
+            "$<TARGET_FILE:garcon>"
+            "${CMAKE_SOURCE_DIR}"
+)
+
+add_test(
     NAME keep_alive_smoke
     COMMAND bash
             "${CMAKE_CURRENT_SOURCE_DIR}/keep_alive_smoke.sh"
@@ -63,6 +71,22 @@ add_test(
     NAME route_table_smoke
     COMMAND bash
             "${CMAKE_CURRENT_SOURCE_DIR}/route_table_smoke.sh"
+            "$<TARGET_FILE:garcon>"
+            "${CMAKE_SOURCE_DIR}"
+)
+
+add_test(
+    NAME router_smoke
+    COMMAND bash
+            "${CMAKE_CURRENT_SOURCE_DIR}/router_smoke.sh"
+            "$<TARGET_FILE:garcon>"
+            "${CMAKE_SOURCE_DIR}"
+)
+
+add_test(
+    NAME rate_limit_smoke
+    COMMAND bash
+            "${CMAKE_CURRENT_SOURCE_DIR}/rate_limit_smoke.sh"
             "$<TARGET_FILE:garcon>"
             "${CMAKE_SOURCE_DIR}"
 )
